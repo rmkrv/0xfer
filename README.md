@@ -53,8 +53,6 @@ The debug APK is written to:
 app\build\outputs\apk\debug\app-debug.apk
 ```
 
-The repository's prebuilt debug APK is [app.apk](app.apk).
-
 Install it on a connected device with:
 
 ```powershell
