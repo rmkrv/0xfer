@@ -1,5 +1,7 @@
 # 0xfer - Optical transfer
 
+> **Status: In development**
+
 0xfer is an Android app for sending files between two devices with a display and a
 camera. The sender presents an animated optical code; the receiver scans the
 stream and reconstructs the original file without a network connection between
