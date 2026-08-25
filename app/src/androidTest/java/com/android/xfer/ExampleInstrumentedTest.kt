@@ -51,6 +51,36 @@ class ExampleInstrumentedTest {
     }
 
     @Test
+    fun hcc2dAxisAlignedGeometryStaysSquare() {
+        val payload = ByteArray(1_024) { (it * 31 + 7).toByte() }
+        val symbol = requireNotNull(NativeHcc2dBridge.encode(payload, 4, 40))
+        val image = Hcc2dSyntheticScene.axisAligned(symbol, pixelsPerModule = 4)
+        val decoder = NativeHcc2dBridge.createDecoder()
+        try {
+            val decoded = NativeHcc2dBridge.decodeYuv(
+                decoder,
+                image.y, 0, image.width, 1,
+                image.u, 0, image.width / 2, 1,
+                image.v, 0, image.width / 2, 1,
+                image.width, image.height
+            ).orEmpty()
+            assertTrue("axis-aligned HCC2D frame did not decode", decoded.any { it.valid })
+            val quad = requireNotNull(NativeHcc2dBridge.readQuads(decoder)?.singleOrNull())
+            for (point in 0 until 4) {
+                val index = point * 2
+                val dx = quad[index] - image.innerQuad[index]
+                val dy = quad[index + 1] - image.innerQuad[index + 1]
+                assertTrue(
+                    "axis-aligned corner $point drifted: actual=${quad.joinToString()} expected=${image.innerQuad.joinToString()}",
+                    kotlin.math.hypot(dx, dy) <= 8.0
+                )
+            }
+        } finally {
+            NativeHcc2dBridge.releaseDecoder(decoder)
+        }
+    }
+
+    @Test
     fun hcc2dOwnDetectorRoundTripsPerspectiveAcrossVersions() {
         val cases = listOf(
             Triple(4, 1, 8),

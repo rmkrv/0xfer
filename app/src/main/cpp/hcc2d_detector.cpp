@@ -270,6 +270,7 @@ struct Hcc2dDetector::Hypothesis {
 	std::array<double, 6> finderPixels{};
 	float modulePixels = 0.0f;
 	float geometricScore = 0.0f;
+	bool projectiveLocked = false;
 };
 
 void Hcc2dDetector::reset()
@@ -788,40 +789,75 @@ bool Hcc2dDetector::findBottomRightAlignment(const Hcc2dGeometry& geometry, floa
 	return true;
 }
 
-void Hcc2dDetector::refineGeometry(const Hcc2dYuv420& frame, Hcc2dGeometry& geometry, float modulePixels) const
+void Hcc2dDetector::refineGeometry(const Hcc2dYuv420& frame, Hcc2dGeometry& geometry, float modulePixels,
+	bool projectiveLocked) const
 {
 	float best = scoreGeometry(frame, geometry);
 	if (best < -0.5f) return;
-	// If the alignment-mark search was inconclusive, allow the free BR corner
-	// to make a few coarse, perspective-sized moves before the normal local
-	// refinement. The other three corners remain pinned by their full finders.
-	for (const float factor : {4.0f, 2.0f}) {
-		const float step = std::max(.7f, modulePixels * factor);
-		for (int coordinate = 4; coordinate <= 5; ++coordinate) {
-			const double original = geometry.quad[coordinate];
-			for (const float delta : {-step, step}) {
-				geometry.quad[coordinate] = original + delta;
-				const float candidate = scoreGeometry(frame, geometry);
-				if (candidate > best) {
-					best = candidate;
-					continue;
-				}
-				geometry.quad[coordinate] = original;
-			}
+	// The old coordinate descent moved each corner independently. A noisy 5x5
+	// alignment look-alike could therefore pull the free bottom-right point by
+	// many modules and turn a front-facing square into a rhombus. Keep the
+	// geometry in the model that established it: an unverified three-finder
+	// candidate may refine only as an affine parallelogram; a verified fourth
+	// landmark keeps its projective shape and may translate as one object.
+	auto translated = [](const Hcc2dGeometry& base, double dx, double dy) {
+		Hcc2dGeometry candidate = base;
+		for (int point = 0; point < 8; point += 2) {
+			candidate.quad[point] += dx;
+			candidate.quad[point + 1] += dy;
 		}
-	}
-	for (const float factor : {1.20f, .60f, .28f}) {
-		const float step = std::max(.35f, modulePixels * factor);
-		for (int pass = 0; pass < 2; ++pass) for (int coordinate = 0; coordinate < 8; ++coordinate) {
-			const double original = geometry.quad[coordinate];
-			for (const float delta : {-step, step}) {
-				geometry.quad[coordinate] = original + delta;
-				const float candidate = scoreGeometry(frame, geometry);
+		return candidate;
+	};
+	if (projectiveLocked) {
+		for (const float factor : {.55f, .24f}) {
+			const float step = std::max(.30f, modulePixels * factor);
+			const Hcc2dGeometry base = geometry;
+			Hcc2dGeometry winner = base;
+			for (int dy = -1; dy <= 1; ++dy) for (int dx = -1; dx <= 1; ++dx) {
+				if (dx == 0 && dy == 0) continue;
+				const Hcc2dGeometry candidateGeometry = translated(base, dx * step, dy * step);
+				const float candidate = scoreGeometry(frame, candidateGeometry);
 				if (candidate > best) {
 					best = candidate;
+					winner = candidateGeometry;
+				}
+			}
+			geometry = winner;
+		}
+		geometry.score = best;
+		return;
+	}
+
+	std::array<double, 6> affine = {
+		geometry.quad[0], geometry.quad[1],
+		geometry.quad[2] - geometry.quad[0], geometry.quad[3] - geometry.quad[1],
+		geometry.quad[6] - geometry.quad[0], geometry.quad[7] - geometry.quad[1],
+	};
+	auto makeAffine = [&](const std::array<double, 6>& parameters) {
+		Hcc2dGeometry candidate = geometry;
+		const double x = parameters[0], y = parameters[1];
+		const double ux = parameters[2], uy = parameters[3];
+		const double vx = parameters[4], vy = parameters[5];
+		candidate.quad[0] = x;          candidate.quad[1] = y;
+		candidate.quad[2] = x + ux;     candidate.quad[3] = y + uy;
+		candidate.quad[4] = x + ux + vx; candidate.quad[5] = y + uy + vy;
+		candidate.quad[6] = x + vx;     candidate.quad[7] = y + vy;
+		return candidate;
+	};
+	for (const float factor : {.55f, .24f}) {
+		const float step = std::max(.30f, modulePixels * factor);
+		for (int pass = 0; pass < 2; ++pass) for (int coordinate = 0; coordinate < 6; ++coordinate) {
+			const double original = affine[coordinate];
+			for (const float delta : {-step, step}) {
+				affine[coordinate] = original + delta;
+				const Hcc2dGeometry candidate = makeAffine(affine);
+				const float score = scoreGeometry(frame, candidate);
+				if (score > best) {
+					best = score;
+					geometry = candidate;
 					continue;
 				}
-				geometry.quad[coordinate] = original;
+				affine[coordinate] = original;
 			}
 		}
 	}
@@ -1005,8 +1041,14 @@ bool Hcc2dDetector::detect(const Hcc2dYuv420& frame, std::vector<Hcc2dGeometry>&
 		// A valid 5x5 match must also agree with the broader native function
 		// pattern. This prevents a random coloured data patch from replacing a
 		// good affine candidate in a dense multi-code frame.
-		if (alignmentConfidence >= .80f && projective.score >= hypothesis.geometry.score - .015f)
+		// A real alignment marker must improve the complete finder/timing/BCH
+		// fit, not merely resemble a 5x5 binary patch inside colour data. This
+		// rejects false BR matches that create dramatic phantom perspective on a
+		// front-facing display.
+		if (alignmentConfidence >= .88f && projective.score >= hypothesis.geometry.score + .020f) {
 			hypothesis.geometry = projective;
+			hypothesis.projectiveLocked = true;
+		}
 	}
 	std::sort(hypotheses.begin(), hypotheses.end(), [](const Hypothesis& lhs, const Hypothesis& rhs) {
 		return lhs.geometry.score + lhs.geometricScore * .08f > rhs.geometry.score + rhs.geometricScore * .08f;
@@ -1016,7 +1058,8 @@ bool Hcc2dDetector::detect(const Hcc2dYuv420& frame, std::vector<Hcc2dGeometry>&
 	// strongest candidates; each refinement samples only native function cells.
 	const int refineCount = std::min<int>(16, hypotheses.size());
 	for (int i = 0; i < refineCount; ++i)
-		refineGeometry(frame, hypotheses[i].geometry, hypotheses[i].modulePixels);
+		refineGeometry(frame, hypotheses[i].geometry, hypotheses[i].modulePixels,
+			hypotheses[i].projectiveLocked);
 	std::sort(hypotheses.begin(), hypotheses.end(), [](const Hypothesis& lhs, const Hypothesis& rhs) {
 		return lhs.geometry.score > rhs.geometry.score;
 	});

@@ -77,5 +77,6 @@ private:
 	float scoreGeometry(const Hcc2dYuv420& frame, const Hcc2dGeometry& geometry) const;
 	bool findBottomRightAlignment(const Hcc2dGeometry& geometry, float modulePixels,
 		float& centerX, float& centerY, float& confidence) const;
-	void refineGeometry(const Hcc2dYuv420& frame, Hcc2dGeometry& geometry, float modulePixels) const;
+	void refineGeometry(const Hcc2dYuv420& frame, Hcc2dGeometry& geometry, float modulePixels,
+		bool projectiveLocked) const;
 };

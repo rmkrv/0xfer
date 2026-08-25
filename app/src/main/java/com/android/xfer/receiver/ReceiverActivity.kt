@@ -39,7 +39,7 @@ import android.content.ContentValues
 import androidx.annotation.RequiresApi
 
 private const val TAG = "OpticalReceiver"
-private const val FILE_PROVIDER_AUTHORITY = "com.android.xfer.fileprovider"
+private const val FILE_PROVIDER_AUTHORITY = "com.android.transfer.fileprovider"
 
 private fun ByteArray?.hex(n: Int = 12): String {
     if (this == null) return "null"
