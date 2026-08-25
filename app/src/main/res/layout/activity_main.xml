@@ -1,0 +1,170 @@
+<?xml version="1.0" encoding="utf-8"?>
+<LinearLayout xmlns:android="http://schemas.android.com/apk/res/android"
+    xmlns:app="http://schemas.android.com/apk/res-auto"
+    android:layout_width="match_parent"
+    android:layout_height="match_parent"
+    android:background="@color/app_background"
+    android:orientation="vertical"
+    android:paddingStart="24dp"
+    android:paddingTop="28dp"
+    android:paddingEnd="24dp"
+    android:paddingBottom="24dp">
+
+    <LinearLayout
+        android:layout_width="match_parent"
+        android:layout_height="wrap_content"
+        android:gravity="center_vertical"
+        android:orientation="horizontal">
+
+        <FrameLayout
+            android:layout_width="46dp"
+            android:layout_height="46dp"
+            android:background="@drawable/bg_icon_art_mask"
+            android:clipToOutline="true">
+
+            <ImageView
+                android:layout_width="match_parent"
+                android:layout_height="match_parent"
+                android:contentDescription="0xfer logo"
+                android:scaleType="fitCenter"
+                android:src="@drawable/app_icon_art" />
+        </FrameLayout>
+
+        <TextView
+            android:layout_width="0dp"
+            android:layout_height="wrap_content"
+            android:layout_marginStart="12dp"
+            android:layout_weight="1"
+            android:text="@string/app_name"
+            android:textColor="@color/app_on_surface"
+            android:textSize="24sp"
+            android:textStyle="bold" />
+    </LinearLayout>
+
+    <Space
+        android:layout_width="1dp"
+        android:layout_height="44dp" />
+
+    <TextView
+        android:layout_width="match_parent"
+        android:layout_height="wrap_content"
+        android:layout_marginBottom="18dp"
+        android:text="Choose an action"
+        android:textColor="@color/app_on_surface"
+        android:textSize="20sp"
+        android:textStyle="bold" />
+
+    <com.google.android.material.button.MaterialButton
+        android:id="@+id/hub_send"
+        android:layout_width="match_parent"
+        android:layout_height="78dp"
+        android:backgroundTint="@color/app_primary"
+        android:text="Send"
+        android:textColor="@color/app_on_primary"
+        android:textSize="18sp"
+        app:cornerRadius="25dp"
+        app:icon="@drawable/ic_send"
+        app:iconGravity="textStart"
+        app:iconPadding="12dp"
+        app:iconTint="@color/app_on_primary" />
+
+    <TextView
+        android:layout_width="match_parent"
+        android:layout_height="wrap_content"
+        android:layout_marginStart="24dp"
+        android:layout_marginTop="8dp"
+        android:text="Choose a file or write a message."
+        android:textColor="@color/app_on_surface_muted"
+        android:textSize="13sp" />
+
+    <com.google.android.material.button.MaterialButton
+        android:id="@+id/hub_receive_hcc2d"
+        style="@style/Widget.Material3.Button.OutlinedButton"
+        android:layout_width="match_parent"
+        android:layout_height="58dp"
+        android:layout_marginTop="14dp"
+        android:backgroundTint="@color/app_surface"
+        android:text="Receive HCC2D (experimental)"
+        android:textColor="@color/app_primary"
+        android:textSize="15sp"
+        app:cornerRadius="20dp"
+        app:strokeColor="@color/app_outline"
+        app:strokeWidth="1dp" />
+
+    <TextView
+        android:layout_width="match_parent"
+        android:layout_height="wrap_content"
+        android:layout_marginStart="24dp"
+        android:layout_marginTop="6dp"
+        android:text="Use this only with HCC2D4 or HCC2D8 sender mode."
+        android:textColor="@color/app_on_surface_muted"
+        android:textSize="13sp" />
+
+    <com.google.android.material.button.MaterialButton
+        android:id="@+id/hub_receive"
+        style="@style/Widget.Material3.Button.OutlinedButton"
+        android:layout_width="match_parent"
+        android:layout_height="78dp"
+        android:layout_marginTop="28dp"
+        android:backgroundTint="@color/app_surface"
+        android:text="Receive"
+        android:textColor="@color/app_primary"
+        android:textSize="18sp"
+        app:cornerRadius="25dp"
+        app:icon="@drawable/ic_receive"
+        app:iconGravity="textStart"
+        app:iconPadding="12dp"
+        app:iconTint="@color/app_primary"
+        app:strokeColor="@color/app_outline"
+        app:strokeWidth="1dp" />
+
+    <TextView
+        android:layout_width="match_parent"
+        android:layout_height="wrap_content"
+        android:layout_marginStart="24dp"
+        android:layout_marginTop="8dp"
+        android:text="Scan the sender’s moving QR code."
+        android:textColor="@color/app_on_surface_muted"
+        android:textSize="13sp" />
+
+    <Space
+        android:layout_width="1dp"
+        android:layout_height="0dp"
+        android:layout_weight="1" />
+
+    <TextView
+        android:id="@+id/hub_license"
+        android:layout_width="wrap_content"
+        android:layout_height="32dp"
+        android:layout_gravity="center_horizontal"
+        android:gravity="center"
+        android:textColor="@color/app_on_surface_muted"
+        android:textColorLink="@color/app_on_surface_muted"
+        android:textSize="12sp" />
+
+    <LinearLayout
+        android:layout_width="match_parent"
+        android:layout_height="wrap_content"
+        android:gravity="center"
+        android:orientation="horizontal">
+
+        <TextView
+            android:layout_width="wrap_content"
+            android:layout_height="wrap_content"
+            android:text="Made by "
+            android:textColor="@color/app_on_surface_muted"
+            android:textSize="12sp" />
+
+        <TextView
+            android:id="@+id/hub_github"
+            android:layout_width="wrap_content"
+            android:layout_height="36dp"
+            android:background="?attr/selectableItemBackgroundBorderless"
+            android:clickable="true"
+            android:focusable="true"
+            android:gravity="center_vertical"
+            android:text="rmkrv"
+            android:textColor="@color/app_on_surface_muted"
+            android:textSize="12sp" />
+    </LinearLayout>
+</LinearLayout>

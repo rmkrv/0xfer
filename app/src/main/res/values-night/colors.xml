@@ -1,0 +1,19 @@
+<?xml version="1.0" encoding="utf-8"?>
+<resources>
+    <color name="app_background">#FF171514</color>
+    <color name="app_surface">#FF211E1C</color>
+    <color name="app_surface_soft">#FF2B2724</color>
+    <color name="app_surface_muted">#FF292522</color>
+    <color name="app_on_surface">#FFF1E9E4</color>
+    <color name="app_on_surface_muted">#FFC8BDB6</color>
+    <color name="app_primary">#FFA5DDDA</color>
+    <color name="app_on_primary">#FF123A3B</color>
+    <color name="app_primary_soft">#FF244A49</color>
+    <color name="app_on_primary_soft">#FFD8F3F0</color>
+    <color name="app_outline">#FF4D4540</color>
+    <color name="app_success">#FF9AD9BF</color>
+    <color name="app_camera_panel">#D91C1A19</color>
+    <color name="app_camera_control">#C02A2725</color>
+    <color name="app_on_camera">#FFFFFFFF</color>
+    <color name="app_qr_surface">#FFFFFFFF</color>
+</resources>

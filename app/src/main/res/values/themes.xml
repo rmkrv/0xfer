@@ -1,0 +1,24 @@
+<resources xmlns:tools="http://schemas.android.com/tools">
+    <style name="Base.Theme.OpticalTransfer" parent="Theme.Material3.DayNight.NoActionBar">
+        <item name="colorPrimary">@color/app_primary</item>
+        <item name="colorOnPrimary">@color/app_on_primary</item>
+        <item name="colorPrimaryContainer">@color/app_primary_soft</item>
+        <item name="colorOnPrimaryContainer">@color/app_on_primary_soft</item>
+        <item name="colorSecondary">@color/app_primary</item>
+        <item name="colorOnSecondary">@color/app_on_primary</item>
+        <item name="colorSurface">@color/app_surface</item>
+        <item name="colorOnSurface">@color/app_on_surface</item>
+        <item name="colorSurfaceVariant">@color/app_surface_soft</item>
+        <item name="colorOnSurfaceVariant">@color/app_on_surface_muted</item>
+        <item name="colorOutline">@color/app_outline</item>
+        <item name="android:windowBackground">@color/app_background</item>
+        <item name="android:statusBarColor">@color/app_background</item>
+        <item name="android:navigationBarColor">@color/app_background</item>
+        <item name="android:windowLightStatusBar">true</item>
+        <item name="android:windowLightNavigationBar">true</item>
+        <item name="android:fontFamily">sans</item>
+        <item name="android:windowActionModeOverlay">true</item>
+    </style>
+
+    <style name="Theme.OpticalTransfer" parent="Base.Theme.OpticalTransfer" />
+</resources>

@@ -1,0 +1,79 @@
+name: CI
+
+on:
+  push:
+    branches: [main, "release/**"]
+  pull_request:
+
+permissions:
+  contents: read
+
+# Only the newest run per branch matters; cancel the rest.
+concurrency:
+  group: ci-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  build-bench:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          submodules: true
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 22
+          cache: npm
+      # build.sh clones and installs the pinned emsdk on a cold cache;
+      # keyed on the pin so a version bump rebuilds the toolchain.
+      - name: Cache emsdk
+        uses: actions/cache@v4
+        with:
+          path: emsdk
+          key: emsdk-${{ hashFiles('build.sh') }}-${{ runner.os }}
+      - name: Ninja
+        run: command -v ninja >/dev/null || sudo apt-get install -y ninja-build
+      - name: Build
+        run: ./build.sh
+      - name: Bench — parity is the gate
+        # The drift line prints ✗ marks by design (0.5px/4px offsets fail);
+        # only "parity ✗" is a regression.
+        run: |
+          npm ci
+          node bench/bench.mjs | tee bench.out
+          grep -q "parity ✓" bench.out
+          ! grep -q "parity ✗" bench.out
+      - name: Module names its source
+        run: |
+          node -e '
+            import("./dist/decimen_codec.js").then(async (m) => {
+              const { readFileSync } = await import("node:fs");
+              const wasmBinary = readFileSync("./dist/decimen_codec.wasm");
+              const mod = await m.default({ instantiateWasm(imports, done) {
+                WebAssembly.instantiate(wasmBinary, imports).then(({ instance, module }) => done(instance, module));
+                return {};
+              } });
+              const v = mod.version(), b = mod.build();
+              console.log(`version ${v} build ${b}`);
+              if (!/^\d+\.\d+\.\d+/.test(v)) throw new Error("unstamped version");
+            });
+          '
+          head -c 200 dist/decimen_codec.js | grep -q "decimen-codec v"
+
+  native:
+    # The wasm workflow never compiles the #ifndef __EMSCRIPTEN__ half of the
+    # wrapper (the C ABI for iOS/Android), so without this job it could break
+    # and no one would know until a native consumer hit it. A host-arch build
+    # is enough: the wrapper has no per-platform code, only the
+    # emscripten/native split this job exists to exercise.
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          submodules: true
+      - name: Ninja
+        run: command -v ninja >/dev/null || sudo apt-get install -y ninja-build
+      - name: Configure without emscripten
+        run: cmake -S . -B build-native -G Ninja -DCMAKE_BUILD_TYPE=Release
+      - name: Build the native library
+        run: cmake --build build-native

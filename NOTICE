@@ -1,0 +1,49 @@
+0xfer
+
+This repository and the resulting Android application are licensed under the
+GNU Affero General Public License, version 3 or (at your option) any later
+version (AGPL-3.0-or-later). The complete license text is in LICENSE.
+
+The application statically links the following third-party components. Their
+copyright and license notices are retained below. Apache License 2.0 is
+provided in LICENSES/Apache-2.0.txt.
+
+-------------------------------------------------------------------------------
+
+decimen-codec
+Copyright (c) 2026 Evan Crawley (Bash Alarmist)
+License: AGPL-3.0-or-later
+Source: https://github.com/bashalarmistalt/decimen-codec
+
+The bundled codec includes a QR-only, tracked-decoding wrapper around
+zxing-cpp. Its source and accompanying notices are in
+third_party/decimen-codec/.
+
+-------------------------------------------------------------------------------
+
+zxing-cpp
+Copyright the zxing-cpp authors
+License: Apache-2.0
+Source: https://github.com/zxing-cpp/zxing-cpp
+
+The bundled zxing-cpp source is located in
+third_party/decimen-codec/third_party/zxing-cpp/.
+
+-------------------------------------------------------------------------------
+
+HCC2D Encoder, version 0.9.0
+Copyright (c) 2010-2026 Marco Querini
+License: Apache-2.0
+Source: https://hcc2d.com/en/
+
+The application builds a locally adapted library form of the reference encoder
+from third_party/hcc2d-cli-c-encoder/. The original file's copyright and
+license notices are retained in that source file.
+
+-------------------------------------------------------------------------------
+
+The Android runtime dependencies declared in app/build.gradle.kts include
+AndroidX, Material Components, CameraX, Kotlin coroutines, ZXing core, and
+ZXing Android Embedded. These components are distributed under Apache-2.0;
+their license text is provided in LICENSES/Apache-2.0.txt. Their complete
+dependency metadata is declared in gradle/libs.versions.toml.

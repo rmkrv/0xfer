@@ -1,0 +1,5 @@
+emsdk/
+build/
+build-native/
+dist/
+node_modules/
