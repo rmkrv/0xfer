@@ -67,6 +67,8 @@ object NativeHcc2dBridge {
     init { System.loadLibrary("decimen_jni") }
 
     external fun encode(payload: ByteArray, colors: Int, version: Int): NativeHcc2dEncoded?
+    /** Useful payload capacity of the robust experimental HCC profile. */
+    external fun payloadCapacity(colors: Int, version: Int): Int
     external fun createDecoder(): Long
     external fun releaseDecoder(handle: Long)
     external fun decodeYuv(

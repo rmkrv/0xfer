@@ -1,5 +1,10 @@
 #include "hcc2d_detector.h"
 
+#include "BitMatrix.h"
+#include "PerspectiveTransform.h"
+#include "qrcode/QRDetector.h"
+#include "qrcode/QRVersion.h"
+
 #include <algorithm>
 #include <array>
 #include <cmath>
@@ -20,7 +25,11 @@ constexpr int kMaxFindersPerScanline = 16;
 // A real V40 triple can have a lower raw run score than a small accidental
 // pattern in colour data, so do not throw it away before structural scoring.
 constexpr int kMaxClusteredFinders = 48;
-constexpr int kMaxTripleSeeds = 64;
+// Finder ranking already rewards repeated horizontal/vertical support. Forty
+// seeds retains room for six real cells and many false colour-data runs, while
+// preventing one 1920x1440 acquisition from expanding into ~1,000 costly
+// version/geometry hypotheses (as observed on the vertically stacked grid).
+constexpr int kMaxTripleSeeds = 40;
 constexpr int kMaxOutputSymbols = 6;
 // Horizontal/vertical scan-line module widths are not the code-axis pitch at
 // an arbitrary in-plane rotation. Give the strongest physical finder triples
@@ -270,6 +279,7 @@ struct Hcc2dDetector::Hypothesis {
 	std::array<double, 6> finderPixels{};
 	float modulePixels = 0.0f;
 	float geometricScore = 0.0f;
+	float alignmentSupport = 0.0f;
 	bool projectiveLocked = false;
 };
 
@@ -456,6 +466,24 @@ bool Hcc2dDetector::verticalCheck(int x, int y, float expectedModule, Finder& ou
 	return true;
 }
 
+float Hcc2dDetector::finderTemplateScore(const Finder& finder) const
+{
+	// A 5x5 QR/HCC alignment mark can imitate 1:1:3:1:1 after blur on one
+	// scanline. Its 3x3 centre and 5x5 ring are the inverse of a 7x7 finder,
+	// however. Score the complete binary template before it participates in a
+	// finder triple. This is a ranking signal rather than a hard axis-aligned
+	// gate, so strongly rolled symbols retain their normal geometric path.
+	if (finder.module < 1.0f) return 0.0f;
+	int matches = 0;
+	for (int y = 0; y < 7; ++y) for (int x = 0; x < 7; ++x) {
+		const bool expectedBlack = std::max(std::abs(x - 3), std::abs(y - 3)) != 2;
+		const bool observedBlack = blackAt(finder.x + (x - 3) * finder.module,
+			finder.y + (y - 3) * finder.module);
+		matches += observedBlack == expectedBlack ? 1 : 0;
+	}
+	return static_cast<float>(matches) / 49.0f;
+}
+
 void Hcc2dDetector::findFinders(std::vector<Finder>& output) const
 {
 	output.clear();
@@ -513,7 +541,13 @@ void Hcc2dDetector::findFinders(std::vector<Finder>& output) const
 			const int centerX = starts[2] + lengths[2] / 2;
 			Finder candidate;
 			if (!verticalCheck(centerX, y, module, candidate)) return;
-			candidate.score *= quality;
+			const float templateScore = finderTemplateScore(candidate);
+			// Keep a scanline-perfect real finder ahead of an alignment marker
+			// whose 5x5 structure was widened by luma/chroma blur. A weak blend
+			// preserves diagonal/foreshortened finder candidates for the later
+			// full projective scorer.
+			candidate.score = std::clamp(candidate.score * quality * .75f + templateScore * .25f,
+				0.0f, 1.0f);
 			retain(candidate);
 		};
 		for (int x = 1; x <= _width; ++x) {
@@ -710,6 +744,38 @@ float Hcc2dDetector::scoreGeometry(const Hcc2dYuv420&, const Hcc2dGeometry& geom
 	return weight > 1.0f ? score / weight : -1.0f;
 }
 
+float Hcc2dDetector::scoreAlignmentGrid(const Hcc2dGeometry& geometry) const
+{
+	const int versionNumber = (geometry.modules - 17) / 4;
+	const auto* version = ZXing::QRCode::Version::Model2(versionNumber);
+	if (!version || versionNumber < 2 || !convexQuad(geometry.quad)) return 0.0f;
+	Homography transform;
+	if (!transform.set(geometry.quad)) return 0.0f;
+	const auto& centers = version->alignmentPatternCenters();
+	if (centers.empty()) return 0.0f;
+	int matches = 0;
+	int total = 0;
+	const int last = centers.back();
+	for (const int centerY : centers) for (const int centerX : centers) {
+		// These three positions are occupied by the 7x7 finder patterns, not
+		// alignment patterns. All remaining entries are fixed native HCC2D
+		// black/white 5x5 markers.
+		if ((centerX == 6 && centerY == 6) ||
+			(centerX == 6 && centerY == last) ||
+			(centerX == last && centerY == 6))
+			continue;
+		for (int y = -2; y <= 2; ++y) for (int x = -2; x <= 2; ++x) {
+			float px = 0.0f, py = 0.0f;
+			if (!transform.map((centerX + x + .5) / geometry.modules,
+				(centerY + y + .5) / geometry.modules, px, py)) continue;
+			const bool expectedBlack = std::max(std::abs(x), std::abs(y)) != 1;
+			matches += blackAt(px, py) == expectedBlack ? 1 : 0;
+			++total;
+		}
+	}
+	return total > 0 ? static_cast<float>(matches) / total : 0.0f;
+}
+
 bool Hcc2dDetector::findBottomRightAlignment(const Hcc2dGeometry& geometry, float modulePixels,
 	float& centerX, float& centerY, float& confidence) const
 {
@@ -787,6 +853,49 @@ bool Hcc2dDetector::findBottomRightAlignment(const Hcc2dGeometry& geometry, floa
 	centerY = best.y;
 	confidence = static_cast<float>(best.matches) / 25.0f;
 	return true;
+}
+
+bool Hcc2dDetector::buildTiledSamplingROIs(const Hcc2dYuv420& frame, const Hcc2dGeometry& geometry,
+	ZXing::ROIs& output, bool reusePreparedStructuralMap)
+{
+	output.clear();
+	// The fast session path calls this immediately after detect() and may reuse
+	// that exact structural map. Other callers refresh it: equal dimensions do
+	// not prove that the camera frame is the same frame.
+	if (!reusePreparedStructuralMap && !prepareBlackMap(frame))
+		return false;
+	if (geometry.modules < kMinDimension || !convexQuad(geometry.quad) ||
+		_width != frame.width || _height != frame.height ||
+		_black.size() != static_cast<size_t>(frame.width) * frame.height)
+		return false;
+	ZXing::BitMatrix bits(_width, _height);
+	for (int y = 0; y < _height; ++y) for (int x = 0; x < _width; ++x)
+		if (_black[static_cast<size_t>(y) * _width + x])
+			bits.set(x, y);
+
+	const int dim = geometry.modules;
+	const ZXing::PerspectiveTransform modToPixel(
+		ZXing::QuadrilateralF{ZXing::PointF{0, 0}, ZXing::PointF{double(dim), 0},
+			ZXing::PointF{double(dim), double(dim)}, ZXing::PointF{0, double(dim)}},
+		ZXing::QuadrilateralF{ZXing::PointF{geometry.quad[0], geometry.quad[1]}, ZXing::PointF{geometry.quad[2], geometry.quad[3]},
+			ZXing::PointF{geometry.quad[4], geometry.quad[5]}, ZXing::PointF{geometry.quad[6], geometry.quad[7]}});
+	if (!modToPixel.isValid()) return false;
+	auto makeFinder = [&](double x, double y) {
+		ZXing::ConcentricPattern result;
+		static_cast<ZXing::PointF&>(result) = modToPixel(ZXing::PointF{x, y});
+		const auto a = modToPixel(ZXing::PointF{x - 3.5, y});
+		const auto b = modToPixel(ZXing::PointF{x + 3.5, y});
+		result.size = std::hypot(b.x - a.x, b.y - a.y);
+		return result;
+	};
+	ZXing::QRCode::FinderPatternSet finders{
+		makeFinder(3.5, dim - 3.5), makeFinder(3.5, 3.5), makeFinder(dim - 3.5, 3.5)};
+	for (auto&& candidate : ZXing::QRCode::SampleQR(bits, finders, &output)) {
+		if (candidate.isValid() && candidate.bits().width() == dim && !output.empty())
+			return true;
+	}
+	output.clear();
+	return false;
 }
 
 void Hcc2dDetector::refineGeometry(const Hcc2dYuv420& frame, Hcc2dGeometry& geometry, float modulePixels,
@@ -869,13 +978,57 @@ bool Hcc2dDetector::detect(const Hcc2dYuv420& frame, std::vector<Hcc2dGeometry>&
 	output.clear();
 	_stats = {};
 	if (!prepareBlackMap(frame)) return false;
+
+	// HCC2D has QR Model 2's locator, timing and alignment structure. Run the
+	// same structural detector Decimen uses, but deliberately stop before QR
+	// format/payload decoding: HCC's colour payload is not a QR payload. This
+	// is the geometry half of Decimen, not its public ReadBarcodes path.
+	std::vector<Hcc2dGeometry> decimenGeometry;
+	ZXing::BitMatrix structuralBits(_width, _height);
+	for (int y = 0; y < _height; ++y) for (int x = 0; x < _width; ++x)
+		if (_black[static_cast<size_t>(y) * _width + x]) structuralBits.set(x, y);
+	auto decimenFinders = ZXing::QRCode::FindFinderPatterns(structuralBits, true);
+	auto decimenSets = ZXing::QRCode::GenerateFinderPatternSets(decimenFinders);
+	for (const auto& finderSet : decimenSets) {
+		for (auto&& sampled : ZXing::QRCode::SampleQR(structuralBits, finderSet)) {
+			if (!sampled.isValid()) continue;
+			const int dim = sampled.bits().width();
+			if (dim < kMinDimension || dim > kMaxDimension || (dim - 17) % 4 != 0) continue;
+			const auto& position = sampled.position();
+			Hcc2dGeometry geometry;
+			geometry.modules = dim;
+			for (int corner = 0; corner < 4; ++corner) {
+				geometry.quad[corner * 2] = position[corner].x;
+				geometry.quad[corner * 2 + 1] = position[corner].y;
+			}
+			if (!convexQuad(geometry.quad)) continue;
+			geometry.score = scoreGeometry(frame, geometry);
+			if (geometry.score < .36f) continue;
+			if (dim > 21 && scoreAlignmentGrid(geometry) < .76f) continue;
+			const float centerX = quadCenterX(geometry.quad);
+			const float centerY = quadCenterY(geometry.quad);
+			const float size = quadSpan(geometry.quad);
+			const bool duplicate = std::any_of(decimenGeometry.begin(), decimenGeometry.end(), [&](const Hcc2dGeometry& existing) {
+				const float existingSize = quadSpan(existing.quad);
+				return existing.modules == dim && distance(centerX, centerY, quadCenterX(existing.quad), quadCenterY(existing.quad)) <
+					std::min(size, existingSize) * .30f;
+			});
+			if (!duplicate) decimenGeometry.push_back(geometry);
+		}
+		if (decimenGeometry.size() >= kMaxOutputSymbols) break;
+	}
+	auto finishWithDecimen = [&]() {
+		output = std::move(decimenGeometry);
+		_stats.acceptedGeometries = static_cast<int>(output.size());
+		return !output.empty();
+	};
 	std::vector<Finder> finders;
 	findFinders(finders);
 	_stats.rawFinders = static_cast<int>(finders.size());
-	if (finders.size() < 3) return false;
+	if (finders.size() < 3) return finishWithDecimen();
 	clusterFinders(finders);
 	_stats.clusteredFinders = static_cast<int>(finders.size());
-	if (finders.size() < 3) return false;
+	if (finders.size() < 3) return finishWithDecimen();
 
 	struct TripleSeed {
 		const Finder* corner = nullptr;
@@ -940,7 +1093,7 @@ bool Hcc2dDetector::detect(const Hcc2dYuv420& frame, std::vector<Hcc2dGeometry>&
 				(1.0f + dimensionError / std::max(12.0f, (nominal - 7) * .60f)) * supportScore;
 			seeds.push_back({corner, first, second, nominal, versionWindow, (localA + localB) * .5f, confidence});
 		}
-	if (seeds.empty()) return false;
+	if (seeds.empty()) return finishWithDecimen();
 	std::sort(seeds.begin(), seeds.end(), [](const TripleSeed& lhs, const TripleSeed& rhs) { return lhs.score > rhs.score; });
 	if (seeds.size() > kMaxTripleSeeds) seeds.resize(kMaxTripleSeeds);
 	_stats.tripleSeeds = static_cast<int>(seeds.size());
@@ -1006,7 +1159,7 @@ bool Hcc2dDetector::detect(const Hcc2dYuv420& frame, std::vector<Hcc2dGeometry>&
 			}
 		}
 		}
-	if (hypotheses.empty()) return false;
+	if (hypotheses.empty()) return finishWithDecimen();
 	_stats.hypotheses = static_cast<int>(hypotheses.size());
 	std::sort(hypotheses.begin(), hypotheses.end(), [](const Hypothesis& lhs, const Hypothesis& rhs) {
 		return lhs.geometry.score + lhs.geometricScore * .08f > rhs.geometry.score + rhs.geometricScore * .08f;
@@ -1045,8 +1198,15 @@ bool Hcc2dDetector::detect(const Hcc2dYuv420& frame, std::vector<Hcc2dGeometry>&
 		// fit, not merely resemble a 5x5 binary patch inside colour data. This
 		// rejects false BR matches that create dramatic phantom perspective on a
 		// front-facing display.
-		if (alignmentConfidence >= .88f && projective.score >= hypothesis.geometry.score + .020f) {
+		const float alignmentSupport = scoreAlignmentGrid(projective);
+		// One 5x5 pattern is not enough in a multi-symbol scene: a false
+		// finder triple can land on a neighbouring symbol's alignment mark and
+		// create the dramatic rhombi seen in the overlay. A genuine v2+ HCC2D
+		// symbol has its whole QR-compatible alignment lattice available.
+		if (alignmentConfidence >= .80f && alignmentSupport >= .76f &&
+			projective.score >= hypothesis.geometry.score - .015f) {
 			hypothesis.geometry = projective;
+			hypothesis.alignmentSupport = alignmentSupport;
 			hypothesis.projectiveLocked = true;
 		}
 	}
@@ -1066,6 +1226,11 @@ bool Hcc2dDetector::detect(const Hcc2dYuv420& frame, std::vector<Hcc2dGeometry>&
 
 	for (const auto& hypothesis : hypotheses) {
 		if (hypothesis.geometry.score < .36f) continue;
+		// Version 1 has no alignment markers. Every larger HCC2D code must be
+		// anchored by the full lattice; accepting an affine three-finder seed
+		// is what allowed a marker inside one code to be paired with finders
+		// from another one.
+		if (hypothesis.geometry.modules > 21 && !hypothesis.projectiveLocked) continue;
 		if (!convexQuad(hypothesis.geometry.quad)) continue;
 		const float cx = quadCenterX(hypothesis.geometry.quad);
 		const float cy = quadCenterY(hypothesis.geometry.quad);
@@ -1082,6 +1247,11 @@ bool Hcc2dDetector::detect(const Hcc2dYuv420& frame, std::vector<Hcc2dGeometry>&
 		output.push_back(hypothesis.geometry);
 		if (static_cast<int>(output.size()) >= kMaxOutputSymbols) break;
 	}
+	// A direct Decimen geometry is used only when it covers every physical
+	// cell the HCC locator found. This prevents an invalid QR payload from
+	// making Decimen stop halfway through a 2x3 HCC grid.
+	if (!decimenGeometry.empty() && decimenGeometry.size() >= output.size())
+		output = std::move(decimenGeometry);
 	_stats.acceptedGeometries = static_cast<int>(output.size());
 	return !output.empty();
 }

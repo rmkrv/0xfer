@@ -2,6 +2,8 @@
 
 #include "hcc2d_codec.h"
 
+#include "GridSampler.h"
+
 #include <vector>
 
 /**
@@ -49,6 +51,13 @@ struct Hcc2dDetectorStats {
 class Hcc2dDetector {
 public:
 	bool detect(const Hcc2dYuv420& frame, std::vector<Hcc2dGeometry>& output);
+	/**
+	 * Build Decimen's alignment-fitted QR sampling tiles from HCC2D's native
+	 * black/white structural plane. The tiles are used by the colour decoder;
+	 * no HCC payload is ever passed to a QR decoder.
+	 */
+	bool buildTiledSamplingROIs(const Hcc2dYuv420& frame, const Hcc2dGeometry& geometry,
+		ZXing::ROIs& output, bool reusePreparedStructuralMap = false);
 	void reset();
 	const Hcc2dDetectorStats& stats() const { return _stats; }
 
@@ -72,9 +81,14 @@ private:
 	bool blackAt(int x, int y) const;
 	bool blackAt(float x, float y) const;
 	bool verticalCheck(int x, int y, float expectedModule, Finder& out) const;
+	float finderTemplateScore(const Finder& finder) const;
 	void findFinders(std::vector<Finder>& output) const;
 	void clusterFinders(std::vector<Finder>& finders) const;
 	float scoreGeometry(const Hcc2dYuv420& frame, const Hcc2dGeometry& geometry) const;
+	// A three-finder seed can accidentally combine structures from adjacent
+	// HCC symbols. Verify every native 5x5 alignment mark before allowing its
+	// fourth corner to become a tracked decoder quad.
+	float scoreAlignmentGrid(const Hcc2dGeometry& geometry) const;
 	bool findBottomRightAlignment(const Hcc2dGeometry& geometry, float modulePixels,
 		float& centerX, float& centerY, float& confidence) const;
 	void refineGeometry(const Hcc2dYuv420& frame, Hcc2dGeometry& geometry, float modulePixels,

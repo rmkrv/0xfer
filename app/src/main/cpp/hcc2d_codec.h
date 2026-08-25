@@ -5,6 +5,8 @@
 #include <memory>
 #include <vector>
 
+#include "GridSampler.h"
+
 class Hcc2dDetector;
 
 struct Hcc2dYuv420 {
@@ -19,6 +21,11 @@ struct Hcc2dYuv420 {
 	int u_pixel_stride = 0;
 	int v_row_stride = 0;
 	int v_pixel_stride = 0;
+	// Pixel origin of this direct view in the full camera image. Acquisition
+	// geometry remains in full-image coordinates while tracked decoding may
+	// operate on a zero-copy crop.
+	int origin_x = 0;
+	int origin_y = 0;
 };
 
 struct Hcc2dDecodeInfo {
@@ -48,6 +55,7 @@ public:
 	/** Decode against geometry acquired by a shared multi-symbol detector. */
 	bool decodeTracked(const Hcc2dYuv420& frame, std::vector<uint8_t>& payload, Hcc2dDecodeInfo& info);
 	void setGeometry(int modules, const double quad[8]);
+	void setSamplingROIs(const ZXing::ROIs& rois);
 	/** Whether a previously supplied quadrilateral is still available for the
 	 * inexpensive tracked path. */
 	bool hasGeometry() const;
@@ -79,6 +87,7 @@ private:
 	std::vector<ModuleSamples> _borderSamples;
 	std::vector<uint8_t> _borderIndexes;
 	std::vector<Yuv> _borderObserved;
+	ZXing::ROIs _samplingROIs;
 	// Reused robust palette-fit scratch. A physical palette border contains a
 	// few samples blurred across neighbouring modules, so its centroid must not
 	// be a raw mean.

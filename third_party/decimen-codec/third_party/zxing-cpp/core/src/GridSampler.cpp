@@ -84,8 +84,8 @@ DetectorResult SampleGrid(const BitMatrix& image, int width, int height, const R
 			{projectCorner({0, 0}), projectCorner({width, 0}), projectCorner({width, height}), projectCorner({0, height})}};
 }
 
-DetectorResult SampleGrid(const BitMatrix& image, int width, int height, const PerspectiveTransform& mod2Pix,
-						  Matrix<std::optional<PointF>>&& apP, const std::vector<int>& apMX, const std::vector<int>& apMY)
+ROIs BuildTiledROIs(int width, int height, const PerspectiveTransform& mod2Pix, Matrix<std::optional<PointF>>&& apP,
+					 const std::vector<int>& apMX, const std::vector<int>& apMY)
 {
 	const int W = Size(apMX) - 1, H = Size(apMY) - 1;
 
@@ -112,7 +112,13 @@ DetectorResult SampleGrid(const BitMatrix& image, int width, int height, const P
 												 {*apP(x, y), *apP(x + 1, y), *apP(x + 1, y + 1), *apP(x, y + 1)}}});
 		}
 
-	return SampleGrid(image, width, height, rois);
+	return rois;
+}
+
+DetectorResult SampleGrid(const BitMatrix& image, int width, int height, const PerspectiveTransform& mod2Pix,
+						  Matrix<std::optional<PointF>>&& apP, const std::vector<int>& apMX, const std::vector<int>& apMY)
+{
+	return SampleGrid(image, width, height, BuildTiledROIs(width, height, mod2Pix, std::move(apP), apMX, apMY));
 }
 
 } // ZXing

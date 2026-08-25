@@ -26,18 +26,19 @@ class ExampleInstrumentedTest {
 
     @Test
     fun hcc2dReferenceEncoderSupportsVersion40BinaryPackets() {
-        // v40, EC L: QR data codewords 2956; HCC2D's 3-byte BYTE framing
-        // and Decimen's 22-byte header leave these exact packet capacities.
-        val hcc4Packet = ByteArray(5_887) { (it * 17).toByte() }
-        val hcc8Packet = ByteArray(8_843) { (it * 29).toByte() }
+        // v40, EC Q: the experimental colour profile trades raw payload for
+        // enough correction to survive phone-display chroma blur. HCC2D's
+        // 3-byte BYTE framing leaves these exact raw capacities.
+        val hcc4Packet = ByteArray(3_307) { (it * 17).toByte() }
+        val hcc8Packet = ByteArray(4_973) { (it * 29).toByte() }
         val four = requireNotNull(NativeHcc2dBridge.encode(hcc4Packet, 4, 40))
         val eight = requireNotNull(NativeHcc2dBridge.encode(hcc8Packet, 8, 40))
         assertEquals(179, four.fullDimension)
         assertEquals(179, eight.fullDimension)
         assertEquals(4, four.colors)
         assertEquals(8, eight.colors)
-        assertEquals(5_909, four.payloadCapacity)
-        assertEquals(8_865, eight.payloadCapacity)
+        assertEquals(3_329, four.payloadCapacity)
+        assertEquals(4_995, eight.payloadCapacity)
     }
 
     @Test
@@ -146,6 +147,96 @@ class ExampleInstrumentedTest {
         assertEquals("both HCC2D cells must be acquired from the same frame", 2, valid.size)
         for (payload in payloads)
             assertTrue("a grid payload was not decoded", valid.any { it.payload.contentEquals(payload) })
+    }
+
+    @Test
+    fun hcc2dOwnDetectorDecodesAllSixCellsInTwoByThreeGrid() {
+        val payloads = (0 until 6).map { cell ->
+            ByteArray(512) { index -> (index * (cell * 6 + 11) + cell * 29 + 3).toByte() }
+        }
+        val symbols = payloads.map { requireNotNull(NativeHcc2dBridge.encode(it, 4, 15)) }
+        val image = Hcc2dSyntheticScene.grid(symbols, columns = 3)
+        val decoder = NativeHcc2dBridge.createDecoder()
+        val decoded = try {
+            NativeHcc2dBridge.decodeYuv(
+                decoder,
+                image.y, 0, image.width, 1,
+                image.u, 0, image.width / 2, 1,
+                image.v, 0, image.width / 2, 1,
+                image.width, image.height
+            ).orEmpty()
+        } finally {
+            NativeHcc2dBridge.releaseDecoder(decoder)
+        }
+        val valid = decoded.filter { it.valid }
+        assertEquals("all six HCC2D grid cells must decode", 6, valid.size)
+        for (payload in payloads)
+            assertTrue("a 2x3 grid payload was not decoded", valid.any { it.payload.contentEquals(payload) })
+    }
+
+    @Test
+    fun hcc2dOwnDetectorDoesNotCrossWireVerticallyStackedSymbols() {
+        // This is the camera layout that previously produced a rhombus: an
+        // alignment marker in the upper symbol was incorrectly combined with
+        // finder patterns from the same/adjacent cell. Both rows must decode
+        // from one acquisition instead of leaving the second code untracked.
+        val payloads = listOf(
+            ByteArray(512) { (it * 7 + 19).toByte() },
+            ByteArray(512) { (it * 37 + 5).toByte() }
+        )
+        val symbols = payloads.map { payload ->
+            requireNotNull(NativeHcc2dBridge.encode(payload, 4, 20))
+        }
+        val image = Hcc2dSyntheticScene.grid(symbols, columns = 1)
+        val decoder = NativeHcc2dBridge.createDecoder()
+        val decoded = try {
+            NativeHcc2dBridge.decodeYuv(
+                decoder,
+                image.y, 0, image.width, 1,
+                image.u, 0, image.width / 2, 1,
+                image.v, 0, image.width / 2, 1,
+                image.width, image.height
+            ).orEmpty()
+        } finally {
+            NativeHcc2dBridge.releaseDecoder(decoder)
+        }
+        val valid = decoded.filter { it.valid }
+        assertEquals("both vertically stacked HCC2D cells must decode", 2, valid.size)
+        for (payload in payloads)
+            assertTrue("a vertically stacked grid payload was not decoded", valid.any { it.payload.contentEquals(payload) })
+    }
+
+    @Test
+    fun hcc2dOwnDetectorKeepsTiltedVerticalSymbolsIndependent() {
+        // Matches the real failure shape: the upper cell is viewed as a
+        // trapezoid while a second same-version cell sits below it. A locator
+        // must not use an upper alignment mark as a finder and stretch the
+        // upper quad into the lower symbol.
+        val payloads = listOf(
+            ByteArray(512) { (it * 17 + 13).toByte() },
+            ByteArray(512) { (it * 43 + 29).toByte() }
+        )
+        val symbols = payloads.map { requireNotNull(NativeHcc2dBridge.encode(it, 4, 15)) }
+        val image = Hcc2dSyntheticScene.perspectiveGrid(symbols, 1280, 960, listOf(
+            doubleArrayOf(310.0, 85.0, 705.0, 115.0, 760.0, 440.0, 350.0, 410.0),
+            doubleArrayOf(300.0, 505.0, 720.0, 500.0, 715.0, 835.0, 300.0, 835.0)
+        ))
+        val decoder = NativeHcc2dBridge.createDecoder()
+        val decoded = try {
+            NativeHcc2dBridge.decodeYuv(
+                decoder,
+                image.y, 0, image.width, 1,
+                image.u, 0, image.width / 2, 1,
+                image.v, 0, image.width / 2, 1,
+                image.width, image.height
+            ).orEmpty()
+        } finally {
+            NativeHcc2dBridge.releaseDecoder(decoder)
+        }
+        val valid = decoded.filter { it.valid }
+        assertEquals("both tilted vertical HCC2D cells must decode", 2, valid.size)
+        for (payload in payloads)
+            assertTrue("a tilted grid payload was not decoded", valid.any { it.payload.contentEquals(payload) })
     }
 
     @Test

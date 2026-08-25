@@ -116,6 +116,7 @@ void Hcc2dDecoder::reset()
 	_functionPattern.clear();
 	_moduleSamples.clear();
 	_borderSamples.clear();
+	_samplingROIs.clear();
 	_dataModules.clear();
 	_functionVersion = 0;
 	_sampleWidth = 0;
@@ -143,7 +144,16 @@ void Hcc2dDecoder::setGeometry(int modules, const double quadIn[8])
 	_track.dim = modules;
 	std::memcpy(_track.quad, quadIn, sizeof(_track.quad));
 	_trackFailures = 0;
-	if (changed) _samplingDirty = true;
+	if (changed) {
+		_samplingROIs.clear();
+		_samplingDirty = true;
+	}
+}
+
+void Hcc2dDecoder::setSamplingROIs(const ZXing::ROIs& rois)
+{
+	_samplingROIs = rois;
+	if (!_samplingROIs.empty()) _samplingDirty = true;
 }
 
 bool Hcc2dDecoder::hasGeometry() const
@@ -265,21 +275,56 @@ bool Hcc2dDecoder::prepareSampling(const Hcc2dYuv420& frame, int dim)
 	if (!modToPixel.isValid()) return false;
 	auto project = [&](double x, double y) {
 		const auto point = modToPixel(PointF{x, y});
-		return SamplePoint{static_cast<int16_t>(std::clamp(int(std::lround(point.x)), 0, frame.width - 1)),
-			static_cast<int16_t>(std::clamp(int(std::lround(point.y)), 0, frame.height - 1))};
+		return SamplePoint{static_cast<int16_t>(std::clamp(int(std::lround(point.x)) - frame.origin_x, 0, frame.width - 1)),
+			static_cast<int16_t>(std::clamp(int(std::lround(point.y)) - frame.origin_y, 0, frame.height - 1))};
 	};
 	static constexpr std::array<std::pair<double, double>, 9> kOffsets =
 		{{{-.22,-.22},{0,-.22},{.22,-.22},
 		  {-.22,0},{0,0},{.22,0},
 		  {-.22,.22},{0,.22},{.22,.22}}};
-	auto projectPatch = [&](ModuleSamples& points, double x, double y) {
+	auto projectPatch = [&](ModuleSamples& points, double x, double y, const PerspectiveTransform* local = nullptr) {
 		for (size_t i = 0; i < kOffsets.size(); ++i)
-			points[i] = project(x + kOffsets[i].first, y + kOffsets[i].second);
+			if (local) {
+				const auto point = (*local)(PointF{x + kOffsets[i].first, y + kOffsets[i].second});
+				points[i] = {static_cast<int16_t>(std::clamp(int(std::lround(point.x)), 0, frame.width - 1)),
+					static_cast<int16_t>(std::clamp(int(std::lround(point.y)), 0, frame.height - 1))};
+			} else {
+				points[i] = project(x + kOffsets[i].first, y + kOffsets[i].second);
+			}
 	};
 	_moduleSamples.resize(size_t(dim) * dim);
+	std::vector<uint8_t> tiledModule(size_t(dim) * dim, 0);
+	Hcc2dGeometry geometry;
+	geometry.modules = dim;
+	std::memcpy(geometry.quad, _track.quad, sizeof(geometry.quad));
+	ZXing::ROIs tiledROIs;
+	// This is Decimen's actual robustness path. It fits every native QR
+	// alignment mark and returns a mesh of local transforms. HCC keeps the
+	// colour-plane classification below; only acquisition geometry is shared.
+	if (frame.origin_x == 0 && frame.origin_y == 0) {
+		if (!_samplingROIs.empty())
+			tiledROIs = _samplingROIs;
+		else if (_detector)
+			_detector->buildTiledSamplingROIs(frame, geometry, tiledROIs);
+	}
+	if (!tiledROIs.empty()) {
+		for (const auto& roi : tiledROIs) {
+			if (!roi.mod2Pix.isValid()) continue;
+			const int x0 = std::clamp(roi.x0, 0, dim);
+			const int x1 = std::clamp(roi.x1, 0, dim);
+			const int y0 = std::clamp(roi.y0, 0, dim);
+			const int y1 = std::clamp(roi.y1, 0, dim);
+			for (int y = y0; y < y1; ++y) for (int x = x0; x < x1; ++x) {
+				projectPatch(_moduleSamples[size_t(y) * dim + x], x + .5, y + .5, &roi.mod2Pix);
+				tiledModule[size_t(y) * dim + x] = 1;
+			}
+		}
+	}
+	// The four-corner mapping remains a conservative fallback for v1, a
+	// partial mesh, or a frame where the structural plane cannot be acquired.
 	for (int y = 0; y < dim; ++y) for (int x = 0; x < dim; ++x) {
-		auto& points = _moduleSamples[size_t(y) * dim + x];
-		projectPatch(points, x + .5, y + .5);
+		if (tiledModule[size_t(y) * dim + x]) continue;
+		projectPatch(_moduleSamples[size_t(y) * dim + x], x + .5, y + .5);
 	}
 	// The reference pattern has labelled colour runs on all four outer edges.
 	// Sampling all legal runs fixes small versions (where the top edge alone
@@ -296,7 +341,7 @@ bool Hcc2dDecoder::prepareSampling(const Hcc2dYuv420& frame, int dim)
 		_borderIndexes.push_back(static_cast<uint8_t>(sequenceIndex & 7));
 	};
 	for (int x = 8; x < dim - 8; ++x) addBorder(x + .5, -.5, x - 8);       // top
-	for (int x = 8; x < dim; ++x) addBorder(x + .5, dim + .5, x - 8);       // bottom
+	for (int x = 8; x < dim - 8; ++x) addBorder(x + .5, dim + .5, x - 8);   // bottom
 	for (int y = 8; y <= dim - 9; ++y) addBorder(-.5, y + .5, dim - 9 - y); // left
 	for (int y = 8; y < dim; ++y) addBorder(dim + .5, y + .5, y - 8);       // right
 	_sampleWidth = frame.width;
@@ -346,8 +391,8 @@ bool Hcc2dDecoder::reanchorGeometry(const Hcc2dYuv420& frame, int dim)
 	// we can apply the architecture without treating coloured data cells as QR.
 	auto lumaAt = [&](double moduleX, double moduleY, float offsetX, float offsetY) {
 		const PointF point = modToPixel(PointF{moduleX, moduleY});
-		const int x = static_cast<int>(std::lround(point.x + offsetX));
-		const int y = static_cast<int>(std::lround(point.y + offsetY));
+		const int x = static_cast<int>(std::lround(point.x + offsetX)) - frame.origin_x;
+		const int y = static_cast<int>(std::lround(point.y + offsetY)) - frame.origin_y;
 		if (x < 0 || y < 0 || x >= frame.width || y >= frame.height) return -1;
 		return frame.y[y * frame.y_row_stride + x * frame.y_pixel_stride] & 0xFF;
 	};
@@ -424,6 +469,7 @@ bool Hcc2dDecoder::reanchorGeometry(const Hcc2dYuv420& frame, int dim)
 		_track.quad[point] += bestX;
 		_track.quad[point + 1] += bestY;
 	}
+	_samplingROIs.clear();
 	_samplingDirty = true;
 	return true;
 }
@@ -443,15 +489,18 @@ bool Hcc2dDecoder::decodeImpl(const Hcc2dYuv420& frame, std::vector<uint8_t>& pa
 	const auto start = std::chrono::steady_clock::now();
 	info = {};
 	payload.clear();
+	// A colour payload can be temporarily uncorrectable while the three binary
+	// finders still prove that this camera quad is correct. Keep those two
+	// health signals separate: otherwise a noisy HCC frame triggers a 160 ms
+	// global locator pass even though the cheap tracked path is locked.
+	bool geometryAnchored = false;
 	auto finish = [&]() {
 		if (_track.active && info.detected) {
-			// HCC2D's BCH format field is independent of the coloured data
-			// planes and is a substantially cheaper, more stable geometry anchor
-			// than a full Reed-Solomon correction. A noisy data frame can fail RS
-			// even though its quad is perfectly usable on the next camera image.
-			// Do not throw that good geometry away and trigger another expensive
-			// full-frame finder search merely because this packet did not correct.
-			if (info.valid || info.repeated || info.stage >= 3) _trackFailures = 0;
+			// The finder re-anchor is the geometry health signal. Format/RS are
+			// transport health signals and may fail on an otherwise stable symbol.
+			// Reacquiring for the latter caused the multi-code receiver to spend
+			// most camera time in the full-frame detector rather than decoding.
+			if (geometryAnchored || info.valid || info.repeated) _trackFailures = 0;
 			else _trackFailures = std::min(_trackFailures + 1, kMaxTrackedFailures);
 		}
 		info.decode_nanos = std::chrono::duration_cast<std::chrono::nanoseconds>(std::chrono::steady_clock::now() - start).count();
@@ -492,7 +541,7 @@ bool Hcc2dDecoder::decodeImpl(const Hcc2dYuv420& frame, std::vector<uint8_t>& pa
 	// Unlike full acquisition, this only probes the known binary finder cells
 	// around the cached geometry. It absorbs normal hand/camera drift before
 	// the colour sampler and RS decoder see it.
-	reanchorGeometry(frame, dim);
+	geometryAnchored = reanchorGeometry(frame, dim);
 	if (!prepareSampling(frame, dim)) { _track.active = false; return finish(); }
 
 	if (_borderSamples.empty() || _borderSamples.size() != _borderIndexes.size()) return finish();

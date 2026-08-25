@@ -53,6 +53,12 @@ using ROIs = std::vector<ROI>;
 
 DetectorResult SampleGrid(const BitMatrix& image, int width, int height, const ROIs& rois);
 
+/** Build the same alignment-pattern tiles used by SampleGrid below. Exposed
+ * for HCC2D, whose QR-compatible structure can use this geometry while its
+ * payload is sampled as colour rather than decoded as QR. */
+ROIs BuildTiledROIs(int width, int height, const PerspectiveTransform& mod2Pix, Matrix<std::optional<PointF>>&& apP,
+	const std::vector<int>& apMX, const std::vector<int>& apMY);
+
 DetectorResult SampleGrid(const BitMatrix& image, int width, int height, const PerspectiveTransform& mod2Pix,
 						  Matrix<std::optional<PointF>>&& apP, const std::vector<int>& apMX, const std::vector<int>& apMY);
 

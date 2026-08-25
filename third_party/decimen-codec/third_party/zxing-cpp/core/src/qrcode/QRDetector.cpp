@@ -457,7 +457,7 @@ static const Version* ReadVersion(const BitMatrix& image, int dimension, const P
 	return Version::DecodeVersionInformation(bits[0], bits[1]);
 }
 
-DetectorResults SampleQR(const BitMatrix& image, const FinderPatternSet& fp)
+DetectorResults SampleQR(const BitMatrix& image, const FinderPatternSet& fp, ROIs* sampledROIs)
 {
 	auto top  = EstimateDimension(image, fp.tl, fp.tr);
 	auto left = EstimateDimension(image, fp.tl, fp.bl);
@@ -589,7 +589,10 @@ DetectorResults SampleQR(const BitMatrix& image, const FinderPatternSet& fp)
 		if (auto c = apP.get(N, N))
 			mod2Pix = Mod2Pix(dimension, PointF(3, 3), {fp.tl, fp.tr, *c, fp.bl});
 
-		co_yield SampleGrid(image, dimension, dimension, mod2Pix, std::move(apP), apM, apM);
+		auto rois = BuildTiledROIs(dimension, dimension, mod2Pix, std::move(apP), apM, apM);
+		if (sampledROIs)
+			*sampledROIs = rois;
+		co_yield SampleGrid(image, dimension, dimension, rois);
 #endif
 	}
 	else

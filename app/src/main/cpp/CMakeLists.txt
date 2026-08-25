@@ -20,6 +20,7 @@ target_compile_definitions(ZXing PRIVATE NDEBUG)
 target_compile_definitions(decimen_codec PRIVATE NDEBUG)
 
 add_library(decimen_jni SHARED decimen_jni.cpp hcc2d_jni.cpp hcc2d_codec.cpp hcc2d_detector.cpp)
+target_compile_definitions(decimen_jni PRIVATE ZXING_INTERNAL)
 target_include_directories(decimen_jni PRIVATE
     ${CMAKE_CURRENT_LIST_DIR}
     ${CMAKE_CURRENT_LIST_DIR}/../../../../third_party/decimen-codec/third_party/zxing-cpp/core/src)

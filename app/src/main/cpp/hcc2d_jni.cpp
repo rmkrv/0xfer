@@ -193,6 +193,8 @@ bool makeTrackedScanCrop(const Hcc2dYuv420& full, const double quad[8], Hcc2dYuv
 	crop.v = full.v + static_cast<size_t>(top / 2) * full.v_row_stride + static_cast<size_t>(left / 2) * full.v_pixel_stride;
 	crop.width = width;
 	crop.height = height;
+	crop.origin_x = left;
+	crop.origin_y = top;
 	offsetX = left;
 	offsetY = top;
 	return true;
@@ -237,7 +239,7 @@ void resetSlots(DecoderSession& session)
 }
 
 void scanGeometry(DecoderSession& session, const Hcc2dYuv420& image, int fullWidth, int fullHeight,
-	int offsetX = 0, int offsetY = 0)
+	int offsetX = 0, int offsetY = 0, int partialSlot = -1)
 {
 	if (session.frameWidth != fullWidth || session.frameHeight != fullHeight) {
 		resetSlots(session);
@@ -245,9 +247,21 @@ void scanGeometry(DecoderSession& session, const Hcc2dYuv420& image, int fullWid
 		session.frameWidth = fullWidth;
 		session.frameHeight = fullHeight;
 	}
-
 	std::vector<Hcc2dGeometry> found;
 	session.detector.detect(image, found);
+	auto attachSamplingMesh = [&](Hcc2dDecoder& decoder, const Candidate& candidate) {
+		// A cropped reacquisition has local pixel coordinates while the decoder
+		// keeps its quad in full-camera coordinates. Its first tracked decode
+		// safely uses the four-corner fallback; the next full scan will refresh
+		// the mesh in the common coordinate system.
+		if (offsetX != 0 || offsetY != 0) return;
+		Hcc2dGeometry geometry;
+		geometry.modules = candidate.modules;
+		std::memcpy(geometry.quad, candidate.quad, sizeof(geometry.quad));
+		ZXing::ROIs rois;
+		if (session.detector.buildTiledSamplingROIs(image, geometry, rois, true))
+			decoder.setSamplingROIs(rois);
+	};
 	const auto& detectorStats = session.detector.stats();
 	session.rawFinders = detectorStats.rawFinders;
 	session.clusteredFinders = detectorStats.clusteredFinders;
@@ -313,7 +327,12 @@ void scanGeometry(DecoderSession& session, const Hcc2dYuv420& image, int fullWid
 	for (const auto& slot : session.slots) {
 		if (slot.active) ++activeSlotCount;
 	}
-	if (stableCandidates.size() < 2 && activeSlotCount < 2) {
+	// A re-acquisition crop belongs to an already known grid cell. Its one
+	// candidate must update that one slot, not switch the whole session back to
+	// single-symbol/fallback mode or age out the untouched neighbours.
+	const bool partialGridScan = partialSlot >= 0 && partialSlot < kMaxHccSymbols &&
+		session.slots[partialSlot].active;
+	if (!partialGridScan && stableCandidates.size() < 2 && activeSlotCount < 2) {
 		if (!rawCandidates.empty()) {
 			// Match Hcc2dDecoder::findGeometry(): for one code, use the
 			// detector's highest-confidence candidate, not the grid's
@@ -332,6 +351,7 @@ void scanGeometry(DecoderSession& session, const Hcc2dYuv420& image, int fullWid
 				session.fallbackDecoder.setGeometry(candidate.modules, candidate.quad);
 				session.fallbackValidated = false;
 			}
+			attachSamplingMesh(session.fallbackDecoder, candidate);
 			session.fallbackModules = candidate.modules;
 			session.fallbackMissedScans = 0;
 		} else if (++session.fallbackMissedScans >= kForgetAfterMisses) {
@@ -347,32 +367,44 @@ void scanGeometry(DecoderSession& session, const Hcc2dYuv420& image, int fullWid
 		}
 		return;
 	}
-	// Grid and fallback modes are intentionally exclusive. Otherwise a stale
-	// single-code track may compete with active grid slots and make the overlay
-	// appear to jump between unrelated squares.
-	session.fallbackDecoder.reset();
-	session.fallbackPayload.clear();
-	session.fallbackDetected = false;
-	session.fallbackMissedScans = 0;
-	session.fallbackModules = 0;
-	session.fallbackFailures = 0;
-	session.fallbackValidated = false;
+	if (!partialGridScan) {
+		// Grid and fallback modes are intentionally exclusive. Otherwise a stale
+		// single-code track may compete with active grid slots and make the overlay
+		// appear to jump between unrelated squares.
+		session.fallbackDecoder.reset();
+		session.fallbackPayload.clear();
+		session.fallbackDetected = false;
+		session.fallbackMissedScans = 0;
+		session.fallbackModules = 0;
+		session.fallbackFailures = 0;
+		session.fallbackValidated = false;
+	}
 
 	std::array<bool, kMaxHccSymbols> touched{};
 	for (const auto& candidate : stableCandidates) {
 		int chosen = -1;
-		double closest = std::numeric_limits<double>::max();
-		for (int i = 0; i < kMaxHccSymbols; ++i) {
-			if (touched[i] || !sameLocation(session.slots[i], candidate)) continue;
-			const double distance = std::hypot(centerX(session.slots[i].quad) - centerX(candidate.quad),
-				centerY(session.slots[i].quad) - centerY(candidate.quad));
-			if (distance < closest) { closest = distance; chosen = i; }
+		if (partialGridScan) {
+			// The detector is looking only at this slot's own YUV crop. Never
+			// allow its result to refresh a different slot; that was how a stale
+			// lower rhombus could stay on screen after the real upper symbol had
+			// been reacquired successfully.
+			if (!sameLocation(session.slots[partialSlot], candidate)) continue;
+			chosen = partialSlot;
+		} else {
+			double closest = std::numeric_limits<double>::max();
+			for (int i = 0; i < kMaxHccSymbols; ++i) {
+				if (touched[i] || !sameLocation(session.slots[i], candidate)) continue;
+				const double distance = std::hypot(centerX(session.slots[i].quad) - centerX(candidate.quad),
+					centerY(session.slots[i].quad) - centerY(candidate.quad));
+				if (distance < closest) { closest = distance; chosen = i; }
+			}
 		}
 		if (chosen < 0) for (int i = 0; i < kMaxHccSymbols; ++i)
 			if (!session.slots[i].active) { chosen = i; break; }
 		if (chosen < 0) continue;
 		auto& slot = session.slots[chosen];
 		const bool newSlot = !slot.active || slot.modules != candidate.modules;
+		bool geometryChanged = newSlot;
 		if (newSlot) {
 			slot.decoder.reset();
 			slot.active = true;
@@ -385,13 +417,19 @@ void scanGeometry(DecoderSession& session, const Hcc2dYuv420& image, int fullWid
 			for (int point = 0; point < 8; ++point)
 				slot.quad[point] += (candidate.quad[point] - slot.quad[point]) * .25;
 			slot.decoder.setGeometry(slot.modules, slot.quad);
+			geometryChanged = true;
 		}
+		if (geometryChanged) attachSamplingMesh(slot.decoder, candidate);
 		slot.missedScans = 0;
 		touched[chosen] = true;
 	}
 	for (int i = 0; i < kMaxHccSymbols; ++i) {
 		auto& slot = session.slots[i];
 		if (!slot.active || touched[i]) continue;
+		// This acquisition saw only one slot's crop. It contains no evidence
+		// about its neighbours, but it is decisive evidence about the targeted
+		// slot: a stale/mixed quad must be retired instead of living forever.
+		if (partialGridScan && i != partialSlot) continue;
 		if (++slot.missedScans >= kForgetAfterMisses) {
 			slot.decoder.reset();
 			slot.payload.clear();
@@ -454,7 +492,11 @@ Java_com_android_xfer_hcc2d_NativeHcc2dBridge_encode(
 	if (!input) return nullptr;
 	thread_local std::vector<uint8_t> modules(kMaxHccModules);
 	int fullDim = 0, mask = 0, capacity = 0;
-	const int result = hcc2d_encode_modules(reinterpret_cast<const uint8_t*>(input), length, colors, 'L', version,
+	// The colour palette is much less forgiving than monochrome QR under
+	// display/camera chroma blur. Q is the experimental HCC transport profile;
+	// the BCH format field carries it, so the native decoder selects the matching
+	// Reed-Solomon layout without a Kotlin-side protocol branch.
+	const int result = hcc2d_encode_modules(reinterpret_cast<const uint8_t*>(input), length, colors, 'Q', version,
 		modules.data(), modules.size(), &fullDim, &mask, &capacity);
 	env->ReleaseByteArrayElements(payload, input, JNI_ABORT);
 	if (result != 0) return nullptr;
@@ -464,6 +506,15 @@ Java_com_android_xfer_hcc2d_NativeHcc2dBridge_encode(
 	if (!output) return nullptr;
 	env->SetByteArrayRegion(output, 0, fullDim * fullDim, reinterpret_cast<const jbyte*>(modules.data()));
 	return env->NewObject(b.encoded, b.encodedCtor, output, fullDim, colors, version, mask, capacity);
+}
+
+extern "C" JNIEXPORT jint JNICALL
+Java_com_android_xfer_hcc2d_NativeHcc2dBridge_payloadCapacity(JNIEnv*, jobject, jint colors, jint version)
+{
+	if ((colors != 4 && colors != 8) || version < 1 || version > 40) return 0;
+	int total = 0, data = 0, blocks = 0, ecpb = 0;
+	return hcc2d_codeword_layout(colors, 'Q', version, &total, &data, &blocks, &ecpb) == 0
+		? std::max(0, data - 3) : 0;
 }
 
 extern "C" JNIEXPORT jlong JNICALL
@@ -501,10 +552,13 @@ Java_com_android_xfer_hcc2d_NativeHcc2dBridge_decodeYuv(
 	});
 	const bool hadFallback = !hadGridSlots && session->fallbackDecoder.hasGeometry();
 	bool needsReacquisition = false;
+	int reacquireSlot = -1;
 	if (hadGridSlots) {
-		for (const auto& slot : session->slots) {
+		for (int i = 0; i < kMaxHccSymbols; ++i) {
+			const auto& slot = session->slots[i];
 			if (slot.active && slot.decoder.needsAcquisition()) {
 				needsReacquisition = true;
+				reacquireSlot = i;
 				break;
 			}
 		}
@@ -519,13 +573,19 @@ Java_com_android_xfer_hcc2d_NativeHcc2dBridge_decodeYuv(
 		Hcc2dYuv420 scanImage = image;
 		int scanOffsetX = 0;
 		int scanOffsetY = 0;
-		if (needsReacquisition && !hadGridSlots && hadFallback) {
+		if (needsReacquisition && hadGridSlots && reacquireSlot >= 0) {
+			// Each grid slot owns a persistent camera-space quad. Reacquire only
+			// the unhealthy cell rather than running finder triples across all
+			// displayed HCC symbols, where their alignment marks can be mixed.
+			makeTrackedScanCrop(image, session->slots[reacquireSlot].quad,
+				scanImage, scanOffsetX, scanOffsetY);
+		} else if (needsReacquisition && !hadGridSlots && hadFallback) {
 			double fallbackQuad[8]{};
 			if (session->fallbackDecoder.quad(fallbackQuad))
 				makeTrackedScanCrop(image, fallbackQuad, scanImage, scanOffsetX, scanOffsetY);
 		}
 		const auto scanStarted = std::chrono::steady_clock::now();
-		scanGeometry(*session, scanImage, width, height, scanOffsetX, scanOffsetY);
+		scanGeometry(*session, scanImage, width, height, scanOffsetX, scanOffsetY, reacquireSlot);
 		session->acquisitionNanos += std::chrono::duration_cast<std::chrono::nanoseconds>(
 			std::chrono::steady_clock::now() - scanStarted).count();
 		++session->acquisitionScans;
@@ -539,7 +599,10 @@ Java_com_android_xfer_hcc2d_NativeHcc2dBridge_decodeYuv(
 	for (int i = 0; i < kMaxHccSymbols; ++i) {
 		auto& slot = session->slots[i];
 		if (!slot.active) continue;
-		slot.decoder.decodeTracked(image, slot.payload, infos[i]);
+		Hcc2dYuv420 trackedImage = image;
+		int ignoredX = 0, ignoredY = 0;
+		makeTrackedScanCrop(image, slot.quad, trackedImage, ignoredX, ignoredY);
+		slot.decoder.decodeTracked(trackedImage, slot.payload, infos[i]);
 		record(*session, infos[i]);
 		if (infos[i].valid) validSlots[validCount++] = i;
 	}
@@ -555,7 +618,11 @@ Java_com_android_xfer_hcc2d_NativeHcc2dBridge_decodeYuv(
 		// no code is visible, starving the camera and hiding the actual scan
 		// cadence. Once scanGeometry has supplied a single-code quad, this path
 		// only samples that tracked geometry.
-		session->fallbackDecoder.decodeTracked(image, session->fallbackPayload, fallbackInfo);
+		Hcc2dYuv420 trackedImage = image;
+		int ignoredX = 0, ignoredY = 0;
+		if (session->fallbackDecoder.quad(session->fallbackQuad))
+			makeTrackedScanCrop(image, session->fallbackQuad, trackedImage, ignoredX, ignoredY);
+		session->fallbackDecoder.decodeTracked(trackedImage, session->fallbackPayload, fallbackInfo);
 		record(*session, fallbackInfo);
 		fallbackValid = fallbackInfo.valid;
 		if (fallbackInfo.stage >= 3) {

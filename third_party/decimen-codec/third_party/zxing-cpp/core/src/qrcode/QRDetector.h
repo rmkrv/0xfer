@@ -9,6 +9,7 @@
 
 #include "ConcentricFinder.h"
 #include "DetectorResult.h"
+#include "GridSampler.h"
 #include "StdGenerator.h"
 
 #include <vector>
@@ -33,7 +34,9 @@ FinderPatternSets GenerateFinderPatternSets(FinderPatterns& patterns);
 
 using DetectorResults = std::generator<DetectorResult>;
 
-DetectorResults SampleQR(const BitMatrix& image, const FinderPatternSet& fp);
+/** If supplied, [sampledROIs] receives the tiled geometry for the last
+ * yielded full-size QR candidate. This does not decode any QR payload. */
+DetectorResults SampleQR(const BitMatrix& image, const FinderPatternSet& fp, ROIs* sampledROIs = nullptr);
 DetectorResult SampleMQR(const BitMatrix& image, const ConcentricPattern& fp);
 DetectorResult SampleRMQR(const BitMatrix& image, const ConcentricPattern& fp);
 

@@ -60,7 +60,7 @@ class SenderActivity : AppCompatActivity() {
     // phase drifts against refresh rather than tearing the same frame edge.
     private val fpsOptions = listOf(1.0, 2.0, 5.0, 10.0, 15.0, 20.0, 24.0, 30.0, 55.0, 60.0)
     private val gridOptions = listOf(1, 2, 3, 4, 6)
-    private val codeTypes = listOf("QR — baseline", "HCC2D4 — experimental", "HCC2D8 — experimental")
+    private val codeTypes = listOf("QR — baseline(Decimen)", "HCC2D4 — experimental(Hcc2d)", "HCC2D8 — experimental(Hcc2d)")
 
     private var sourceFile: File? = null
     private var sourceName: String? = null
@@ -366,17 +366,11 @@ class SenderActivity : AppCompatActivity() {
     }
 
     private fun hcc2dBlockLength(colors: Int, version: Int): Int {
-        // QR-compatible L-level data codewords multiplied by two/three;
-        // subtract HCC2D's 3-byte framing and Decimen's 22-byte header.
-        val qrDataCodewords = when (version) {
-            10 -> 274
-            15 -> 523
-            20 -> 861
-            25 -> 1_276
-            40 -> 2_956
-            else -> error("Unsupported test version")
-        }
-        return qrDataCodewords * (if (colors == 4) 2 else 3) - 25
+        // HCC2D uses Q-level EC: colour-module errors are materially more
+        // frequent than binary QR errors on a phone display. Query the native
+        // reference layout rather than duplicating a version table in Kotlin.
+        // The packet carries Decimen's 22-byte header inside HCC2D's payload.
+        return (NativeHcc2dBridge.payloadCapacity(colors, version) - 22).coerceAtLeast(1)
     }
 
     private fun stop() {

@@ -183,6 +183,61 @@ object Hcc2dSyntheticScene {
         return Frame(y, u, v, width, height, innerQuad.copyOf(), dim)
     }
 
+    /** Renders independently projected symbols into one camera image. This
+     * models a phone filming multiple cells on a tilted display; unlike
+     * [grid], each row may have a different perspective quadrilateral. */
+    fun perspectiveGrid(
+        symbols: List<NativeHcc2dEncoded>,
+        width: Int,
+        height: Int,
+        innerQuads: List<DoubleArray>
+    ): Frame {
+        require(symbols.isNotEmpty() && symbols.size == innerQuads.size)
+        require(width > 1 && height > 1 && width % 2 == 0 && height % 2 == 0)
+        val dim = symbols.first().fullDimension - 2
+        require(symbols.all { it.fullDimension - 2 == dim })
+        require(innerQuads.all { it.size == 8 })
+        val inverses = innerQuads.map { quad ->
+            invert3x3(homography(
+                doubleArrayOf(0.0, 0.0, dim.toDouble(), 0.0, dim.toDouble(), dim.toDouble(), 0.0, dim.toDouble()),
+                quad
+            ))
+        }
+        fun colourAt(x: Double, yy: Double): IntArray {
+            for (index in symbols.indices) {
+                val source = apply(inverses[index], x, yy)
+                val moduleX = floor(source[0]).toInt()
+                val moduleY = floor(source[1]).toInt()
+                if (moduleX in -1..dim && moduleY in -1..dim) {
+                    val symbol = symbols[index]
+                    val moduleIndex = (moduleY + 1) * symbol.fullDimension + moduleX + 1
+                    return palette(symbol.colors, symbol.modules[moduleIndex].toInt() and 0xFF)
+                }
+            }
+            return WHITE
+        }
+        val y = ByteBuffer.allocateDirect(width * height)
+        val u = ByteBuffer.allocateDirect(width / 2 * (height / 2))
+        val v = ByteBuffer.allocateDirect(width / 2 * (height / 2))
+        for (py in 0 until height) for (px in 0 until width) {
+            y.put(py * width + px, yOf(colourAt(px + .5, py + .5)).toByte())
+        }
+        for (cy in 0 until height / 2) for (cx in 0 until width / 2) {
+            var uu = 0
+            var vv = 0
+            for (dy in 0..1) for (dx in 0..1) {
+                val rgb = colourAt(cx * 2 + dx + .5, cy * 2 + dy + .5)
+                val yy = yOf(rgb)
+                uu += uOf(rgb, yy)
+                vv += vOf(rgb, yy)
+            }
+            val pixel = cy * (width / 2) + cx
+            u.put(pixel, (uu / 4).toByte())
+            v.put(pixel, (vv / 4).toByte())
+        }
+        return Frame(y, u, v, width, height, innerQuads.first().copyOf(), dim)
+    }
+
     /**
      * Applies the kind of uneven luma lift that occurs when a camera faces a
      * bright phone display in a darker room.  Black modules on one side of
