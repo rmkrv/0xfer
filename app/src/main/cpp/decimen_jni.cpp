@@ -20,7 +20,7 @@ ResultBindings& resultBindings(JNIEnv* env) {
     static ResultBindings bindings;
     static std::once_flag initialized;
     std::call_once(initialized, [env] {
-        auto local = env->FindClass("com/android/qttransfer/qr/NativeQrResult");
+        auto local = env->FindClass("com/android/xfer/qr/NativeQrResult");
         if (!local) return;
         bindings.cls = static_cast<jclass>(env->NewGlobalRef(local));
         env->DeleteLocalRef(local);
@@ -58,7 +58,7 @@ jobject makeResult(JNIEnv* env, const decimen_symbol& symbol, const uint8_t* byt
 }
 
 extern "C" JNIEXPORT jobject JNICALL
-Java_com_android_qttransfer_qr_NativeDecimenBridge_readFull(
+Java_com_android_xfer_qr_NativeDecimenBridge_readFull(
         JNIEnv* env, jobject, jbyteArray luma, jint width, jint height) {
     if (!luma || width <= 0 || height <= 0) return nullptr;
     const auto* lum = copyLuma(env, luma, width, height);
@@ -75,7 +75,7 @@ Java_com_android_qttransfer_qr_NativeDecimenBridge_readFull(
 }
 
 extern "C" JNIEXPORT jobjectArray JNICALL
-Java_com_android_qttransfer_qr_NativeDecimenBridge_readFullAll(
+Java_com_android_xfer_qr_NativeDecimenBridge_readFullAll(
         JNIEnv* env, jobject, jbyteArray luma, jint width, jint height) {
     if (!luma || width <= 0 || height <= 0) return nullptr;
     const auto* lum = copyLuma(env, luma, width, height);
@@ -98,7 +98,7 @@ Java_com_android_qttransfer_qr_NativeDecimenBridge_readFullAll(
 }
 
 extern "C" JNIEXPORT jobject JNICALL
-Java_com_android_qttransfer_qr_NativeDecimenBridge_readTracked(
+Java_com_android_xfer_qr_NativeDecimenBridge_readTracked(
         JNIEnv* env, jobject, jbyteArray luma, jint width, jint height, jint modules,
         jdoubleArray quadIn) {
     if (!luma || !quadIn || width <= 0 || height <= 0 || modules <= 0 ||

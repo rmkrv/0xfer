@@ -3,12 +3,12 @@ plugins {
 }
 
 android {
-    namespace = "com.android.qttransfer"
+    namespace = "com.android.xfer"
     compileSdk = 37
     ndkVersion = "28.2.13676358"
 
     defaultConfig {
-        applicationId = "com.android.transfer"
+        applicationId = "com.android.xfer"
         minSdk = 26
         targetSdk = 36
         versionCode = 1

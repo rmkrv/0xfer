@@ -15,7 +15,7 @@
         android:supportsRtl="true"
         android:theme="@style/Theme.OpticalTransfer">
         <activity
-            android:name="com.android.qttransfer.MainActivity"
+            android:name="com.android.xfer.MainActivity"
             android:exported="true"
             android:windowSoftInputMode="adjustResize">
             <intent-filter>
@@ -26,11 +26,11 @@
         </activity>
 
         <activity
-            android:name="com.android.qttransfer.sender.SenderActivity"
+            android:name="com.android.xfer.sender.SenderActivity"
             android:exported="false" />
 
         <activity
-            android:name="com.android.qttransfer.receiver.ReceiverActivity"
+            android:name="com.android.xfer.receiver.ReceiverActivity"
             android:exported="false" />
 
         <provider

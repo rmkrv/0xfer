@@ -5,18 +5,18 @@
     android:layout_height="match_parent"
     android:background="@color/app_background">
 
-    <com.android.qttransfer.qr.ParallelCameraView
+    <com.android.xfer.qr.ParallelCameraView
         android:id="@+id/receiver_preview"
         android:layout_width="match_parent"
         android:layout_height="match_parent" />
 
-    <com.android.qttransfer.hcc2d.Hcc2dCameraView
+    <com.android.xfer.hcc2d.Hcc2dCameraView
         android:id="@+id/receiver_hcc2d_preview"
         android:layout_width="match_parent"
         android:layout_height="match_parent"
         android:visibility="gone" />
 
-    <com.android.qttransfer.receiver.QROverlayView
+    <com.android.xfer.receiver.QROverlayView
         android:id="@+id/receiver_overlay"
         android:layout_width="match_parent"
         android:layout_height="match_parent" />

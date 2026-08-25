@@ -302,13 +302,13 @@
         android:layout_weight="1"
         android:background="@color/app_qr_surface">
 
-        <com.android.qttransfer.qr.QrDisplayView
+        <com.android.xfer.qr.QrDisplayView
             android:id="@+id/sender_image"
             android:layout_width="match_parent"
             android:layout_height="match_parent"
             android:background="@color/app_qr_surface" />
 
-        <com.android.qttransfer.hcc2d.Hcc2dDisplayView
+        <com.android.xfer.hcc2d.Hcc2dDisplayView
             android:id="@+id/sender_hcc2d_image"
             android:layout_width="match_parent"
             android:layout_height="match_parent"

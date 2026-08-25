@@ -1,5 +1,5 @@
 cmake_minimum_required(VERSION 3.22.1)
-project(qttransfer_native LANGUAGES C CXX)
+project(xfer_native LANGUAGES C CXX)
 
 # Build Decimen's QR-only ZXing fork as a static dependency, then expose the
 # two decode entry points through one small JNI bridge.

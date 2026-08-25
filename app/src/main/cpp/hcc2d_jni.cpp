@@ -97,8 +97,8 @@ Bindings& bindings(JNIEnv* env)
 	static Bindings out;
 	static std::once_flag once;
 	std::call_once(once, [env] {
-		auto encodedLocal = env->FindClass("com/android/qttransfer/hcc2d/NativeHcc2dEncoded");
-		auto frameLocal = env->FindClass("com/android/qttransfer/hcc2d/NativeHcc2dFrame");
+		auto encodedLocal = env->FindClass("com/android/xfer/hcc2d/NativeHcc2dEncoded");
+		auto frameLocal = env->FindClass("com/android/xfer/hcc2d/NativeHcc2dFrame");
 		if (!encodedLocal || !frameLocal) return;
 		out.encoded = static_cast<jclass>(env->NewGlobalRef(encodedLocal));
 		out.frame = static_cast<jclass>(env->NewGlobalRef(frameLocal));
@@ -444,7 +444,7 @@ jobject makeFrame(JNIEnv* env, const Bindings& b, const std::vector<uint8_t>& pa
 }
 
 extern "C" JNIEXPORT jobject JNICALL
-Java_com_android_qttransfer_hcc2d_NativeHcc2dBridge_encode(
+Java_com_android_xfer_hcc2d_NativeHcc2dBridge_encode(
 		JNIEnv* env, jobject, jbyteArray payload, jint colors, jint version)
 {
 	if (!payload || (colors != 4 && colors != 8) || version < 1 || version > 40) return nullptr;
@@ -467,19 +467,19 @@ Java_com_android_qttransfer_hcc2d_NativeHcc2dBridge_encode(
 }
 
 extern "C" JNIEXPORT jlong JNICALL
-Java_com_android_qttransfer_hcc2d_NativeHcc2dBridge_createDecoder(JNIEnv*, jobject)
+Java_com_android_xfer_hcc2d_NativeHcc2dBridge_createDecoder(JNIEnv*, jobject)
 {
 	return reinterpret_cast<jlong>(new DecoderSession());
 }
 
 extern "C" JNIEXPORT void JNICALL
-Java_com_android_qttransfer_hcc2d_NativeHcc2dBridge_releaseDecoder(JNIEnv*, jobject, jlong handle)
+Java_com_android_xfer_hcc2d_NativeHcc2dBridge_releaseDecoder(JNIEnv*, jobject, jlong handle)
 {
 	delete reinterpret_cast<DecoderSession*>(handle);
 }
 
 extern "C" JNIEXPORT jobjectArray JNICALL
-Java_com_android_qttransfer_hcc2d_NativeHcc2dBridge_decodeYuv(
+Java_com_android_xfer_hcc2d_NativeHcc2dBridge_decodeYuv(
 		JNIEnv* env, jobject, jlong handle,
 		jobject y, jint yOffset, jint yRowStride, jint yPixelStride,
 		jobject u, jint uOffset, jint uRowStride, jint uPixelStride,
@@ -593,7 +593,7 @@ Java_com_android_qttransfer_hcc2d_NativeHcc2dBridge_decodeYuv(
 }
 
 extern "C" JNIEXPORT jlongArray JNICALL
-Java_com_android_qttransfer_hcc2d_NativeHcc2dBridge_readStats(JNIEnv* env, jobject, jlong handle)
+Java_com_android_xfer_hcc2d_NativeHcc2dBridge_readStats(JNIEnv* env, jobject, jlong handle)
 {
 	auto* session = reinterpret_cast<DecoderSession*>(handle);
 	if (!session) return nullptr;
@@ -610,7 +610,7 @@ Java_com_android_qttransfer_hcc2d_NativeHcc2dBridge_readStats(JNIEnv* env, jobje
 }
 
 extern "C" JNIEXPORT jobjectArray JNICALL
-Java_com_android_qttransfer_hcc2d_NativeHcc2dBridge_readQuads(JNIEnv* env, jobject, jlong handle)
+Java_com_android_xfer_hcc2d_NativeHcc2dBridge_readQuads(JNIEnv* env, jobject, jlong handle)
 {
 	auto* session = reinterpret_cast<DecoderSession*>(handle);
 	if (!session || session->quadCount == 0) return nullptr;
