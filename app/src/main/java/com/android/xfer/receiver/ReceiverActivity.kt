@@ -97,7 +97,6 @@ class ReceiverActivity : AppCompatActivity() {
     private var qrStartedAtMs = 0L
 
 
-    @RequiresApi(Build.VERSION_CODES.Q)
     override fun onCreate(savedInstanceState: Bundle?) {
         super.onCreate(savedInstanceState)
         window.addFlags(android.view.WindowManager.LayoutParams.FLAG_KEEP_SCREEN_ON)
@@ -123,7 +122,6 @@ class ReceiverActivity : AppCompatActivity() {
         hccMode = intent.getBooleanExtra(EXTRA_HCC2D, false)
         benchmark.visibility = View.VISIBLE
 
-        btnSave.setOnClickListener { saveToDownloads() }
         btnShare.setOnClickListener { shareFile() }
         btnOpen.setOnClickListener { openFile() }
         btnRescan.setOnClickListener { resetAndRescan() }
@@ -133,6 +131,18 @@ class ReceiverActivity : AppCompatActivity() {
             startScanning()
         } else {
             ActivityCompat.requestPermissions(this, arrayOf(Manifest.permission.CAMERA), 100)
+        }
+
+        // saving to Downloads uses Android 10 APIs; share and open work on Android 8+.
+        btnSave.visibility = if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.Q) {
+            View.VISIBLE
+        } else {
+            View.GONE
+        }
+        btnSave.setOnClickListener {
+            if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.Q) {
+                saveToDownloads()
+            }
         }
     }
 
@@ -427,7 +437,6 @@ class ReceiverActivity : AppCompatActivity() {
         status.text = if (verified) "Transfer complete" else "Transfer needs attention"
         resultPanel.visibility = android.view.View.VISIBLE
     }
-
     @RequiresApi(Build.VERSION_CODES.Q)
     private fun saveToDownloads() {
         val file = outFile ?: return
