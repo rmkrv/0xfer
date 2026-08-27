@@ -388,7 +388,7 @@ class ReceiverActivity : AppCompatActivity() {
             val unpacked = rcv.unpack()
             val info = unpacked.info
             currentInfo = info
-            val file = File(dir, info.fileName)
+            val file = findAvailableReceivedFile(dir, info.fileName)
             file.writeBytes(unpacked.bytes)
             outFile = file
             barcodeView.stop()
@@ -437,6 +437,23 @@ class ReceiverActivity : AppCompatActivity() {
         status.text = if (verified) "Transfer complete" else "Transfer needs attention"
         resultPanel.visibility = android.view.View.VISIBLE
     }
+
+    /** Keeps an earlier received file when a later transfer has the same name. */
+    private fun findAvailableReceivedFile(directory: File, name: String): File {
+        val original = File(directory, name)
+        if (!original.exists()) return original
+
+        val extensionStart = name.lastIndexOf('.').takeIf { it > 0 }
+        val baseName = if (extensionStart == null) name else name.substring(0, extensionStart)
+        val extension = if (extensionStart == null) "" else name.substring(extensionStart)
+        var suffix = 1
+        while (true) {
+            val candidate = File(directory, "$baseName ($suffix)$extension")
+            if (!candidate.exists()) return candidate
+            suffix++
+        }
+    }
+
     @RequiresApi(Build.VERSION_CODES.Q)
     private fun saveToDownloads() {
         val file = outFile ?: return
