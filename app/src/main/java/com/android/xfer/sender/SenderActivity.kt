@@ -13,6 +13,7 @@ import android.view.View
 import android.widget.Toast
 import androidx.activity.result.contract.ActivityResultContracts
 import androidx.appcompat.app.AppCompatActivity
+import androidx.core.widget.NestedScrollView
 import androidx.core.widget.addTextChangedListener
 import androidx.lifecycle.lifecycleScope
 import com.android.xfer.R
@@ -50,6 +51,8 @@ class SenderActivity : AppCompatActivity() {
     private lateinit var navigation: View
     private lateinit var statusPanel: View
     private lateinit var bottomHint: View
+    private lateinit var qrContainer: View
+    private lateinit var senderScroll: NestedScrollView
 
     // Low-density codes decode far more reliably through a phone camera. Packet
     // payload is chosen from the selected version instead of wasting a v15/v20
@@ -138,6 +141,8 @@ class SenderActivity : AppCompatActivity() {
         navigation = findViewById(R.id.sender_navigation)
         statusPanel = findViewById(R.id.sender_status_panel)
         bottomHint = findViewById(R.id.sender_bottom_hint)
+        qrContainer = findViewById(R.id.sender_qr_container)
+        senderScroll = findViewById(R.id.sender_scroll)
 
         versionSpinner.adapter = ArrayAdapter(
             this,
@@ -273,6 +278,7 @@ class SenderActivity : AppCompatActivity() {
         status.text = "Preparing ${info.fileName}…"
         imageView.visibility = View.VISIBLE
         hcc2dView.visibility = View.GONE
+        revealTransferCode()
 
         job = lifecycleScope.launch(Dispatchers.Default) {
             val matrices = MutableList(gridCount) {
@@ -316,6 +322,7 @@ class SenderActivity : AppCompatActivity() {
         imageView.visibility = View.GONE
         hcc2dView.visibility = View.VISIBLE
         status.text = "Preparing HCC2D$colors v$version · ${info.fileName}…"
+        revealTransferCode()
 
         job = lifecycleScope.launch(Dispatchers.Default) {
             val symbols = ArrayList<com.android.xfer.hcc2d.NativeHcc2dEncoded>(gridCount)
@@ -378,9 +385,27 @@ class SenderActivity : AppCompatActivity() {
         job?.cancel()
         controls.visibility = View.VISIBLE
         qrInformation.visibility = View.GONE
+        qrContainer.visibility = View.GONE
+        bottomHint.visibility = View.GONE
         startButton.text = "Show transfer code"
         status.text = "Transfer stopped. You can try again."
         updateStartButton()
+        senderScroll.post { senderScroll.smoothScrollTo(0, 0) }
+    }
+
+    private fun revealTransferCode() {
+        qrContainer.visibility = View.VISIBLE
+        bottomHint.visibility = View.VISIBLE
+        hideKeyboard()
+        senderScroll.post {
+            senderScroll.smoothScrollTo(0, qrContainer.top)
+        }
+    }
+
+    private fun hideKeyboard() {
+        editText.clearFocus()
+        getSystemService(android.view.inputmethod.InputMethodManager::class.java)
+            .hideSoftInputFromWindow(editText.windowToken, 0)
     }
 
     private fun toggleQrFullscreen() {

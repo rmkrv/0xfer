@@ -1,9 +1,16 @@
 <?xml version="1.0" encoding="utf-8"?>
-<LinearLayout xmlns:android="http://schemas.android.com/apk/res/android"
+<androidx.core.widget.NestedScrollView xmlns:android="http://schemas.android.com/apk/res/android"
     xmlns:app="http://schemas.android.com/apk/res-auto"
+    android:id="@+id/sender_scroll"
     android:layout_width="match_parent"
     android:layout_height="match_parent"
     android:background="@color/app_background"
+    android:clipToPadding="false"
+    android:fillViewport="true">
+
+    <LinearLayout
+    android:layout_width="match_parent"
+    android:layout_height="wrap_content"
     android:orientation="vertical"
     android:paddingStart="20dp"
     android:paddingTop="12dp"
@@ -297,10 +304,10 @@
     <FrameLayout
         android:id="@+id/sender_qr_container"
         android:layout_width="match_parent"
-        android:layout_height="0dp"
+        android:layout_height="320dp"
         android:layout_marginTop="20dp"
-        android:layout_weight="1"
-        android:background="@color/app_qr_surface">
+        android:background="@color/app_qr_surface"
+        android:visibility="gone">
 
         <com.android.xfer.qr.QrDisplayView
             android:id="@+id/sender_image"
@@ -324,6 +331,8 @@
         android:gravity="center"
         android:text="Keep this screen bright for the best transfer."
         android:textColor="@color/app_on_surface_muted"
-        android:textSize="13sp" />
+        android:textSize="13sp"
+        android:visibility="gone" />
 
-</LinearLayout>
+    </LinearLayout>
+</androidx.core.widget.NestedScrollView>
