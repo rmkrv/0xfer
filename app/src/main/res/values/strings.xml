@@ -1,4 +1,5 @@
 <resources>
     <string name="app_name">0xfer</string>
+    <string name="launch_tagline">OPTICAL TRANSFER</string>
     <string name="footer_license_link">License information on &lt;a href="https://github.com/rmkrv/0xfer"&gt;GitHub&lt;/a&gt;</string>
 </resources>

@@ -1,6 +1,11 @@
 <?xml version="1.0" encoding="utf-8"?>
-<LinearLayout xmlns:android="http://schemas.android.com/apk/res/android"
+<FrameLayout xmlns:android="http://schemas.android.com/apk/res/android"
     xmlns:app="http://schemas.android.com/apk/res-auto"
+    android:layout_width="match_parent"
+    android:layout_height="match_parent"
+    android:background="@color/app_background">
+
+    <LinearLayout
     android:layout_width="match_parent"
     android:layout_height="match_parent"
     android:background="@color/app_background"
@@ -167,4 +172,78 @@
             android:textColor="@color/app_on_surface_muted"
             android:textSize="12sp" />
     </LinearLayout>
-</LinearLayout>
+    </LinearLayout>
+
+    <FrameLayout
+        android:id="@+id/launch_splash"
+        android:layout_width="match_parent"
+        android:layout_height="match_parent"
+        android:background="@color/app_background"
+        android:clickable="true"
+        android:focusable="true">
+
+        <View
+            android:id="@+id/launch_halo"
+            android:layout_width="360dp"
+            android:layout_height="360dp"
+            android:layout_gravity="center"
+            android:background="@drawable/bg_splash_halo" />
+
+        <View
+            android:id="@+id/launch_pulse_one"
+            android:layout_width="142dp"
+            android:layout_height="142dp"
+            android:layout_gravity="center"
+            android:background="@drawable/bg_splash_pulse" />
+
+        <View
+            android:id="@+id/launch_pulse_two"
+            android:layout_width="142dp"
+            android:layout_height="142dp"
+            android:layout_gravity="center"
+            android:background="@drawable/bg_splash_pulse" />
+
+        <LinearLayout
+            android:layout_width="wrap_content"
+            android:layout_height="wrap_content"
+            android:layout_gravity="center"
+            android:gravity="center"
+            android:orientation="vertical">
+
+            <ImageView
+                android:id="@+id/launch_logo"
+                android:layout_width="136dp"
+                android:layout_height="136dp"
+                android:contentDescription="@string/app_name"
+                android:scaleType="fitCenter"
+                android:src="@drawable/app_icon_art" />
+
+            <LinearLayout
+                android:id="@+id/launch_brand"
+                android:layout_width="wrap_content"
+                android:layout_height="wrap_content"
+                android:layout_marginTop="18dp"
+                android:gravity="center"
+                android:orientation="vertical">
+
+                <TextView
+                    android:layout_width="wrap_content"
+                    android:layout_height="wrap_content"
+                    android:text="@string/app_name"
+                    android:textColor="@color/app_on_surface"
+                    android:textSize="32sp"
+                    android:textStyle="bold" />
+
+                <TextView
+                    android:layout_width="wrap_content"
+                    android:layout_height="wrap_content"
+                    android:layout_marginTop="7dp"
+                    android:letterSpacing="0.18"
+                    android:text="@string/launch_tagline"
+                    android:textColor="@color/app_on_surface_muted"
+                    android:textSize="10sp"
+                    android:textStyle="bold" />
+            </LinearLayout>
+        </LinearLayout>
+    </FrameLayout>
+</FrameLayout>
