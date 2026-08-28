@@ -52,7 +52,7 @@ class SenderActivity : AppCompatActivity() {
     private lateinit var statusPanel: View
     private lateinit var bottomHint: View
     private lateinit var qrContainer: View
-    private lateinit var senderScroll: NestedScrollView
+    private lateinit var setupScroll: NestedScrollView
 
     // Low-density codes decode far more reliably through a phone camera. Packet
     // payload is chosen from the selected version instead of wasting a v15/v20
@@ -142,7 +142,7 @@ class SenderActivity : AppCompatActivity() {
         statusPanel = findViewById(R.id.sender_status_panel)
         bottomHint = findViewById(R.id.sender_bottom_hint)
         qrContainer = findViewById(R.id.sender_qr_container)
-        senderScroll = findViewById(R.id.sender_scroll)
+        setupScroll = findViewById(R.id.sender_setup_scroll)
 
         versionSpinner.adapter = ArrayAdapter(
             this,
@@ -390,16 +390,15 @@ class SenderActivity : AppCompatActivity() {
         startButton.text = "Show transfer code"
         status.text = "Transfer stopped. You can try again."
         updateStartButton()
-        senderScroll.post { senderScroll.smoothScrollTo(0, 0) }
+        setupScroll.visibility = View.VISIBLE
+        setupScroll.post { setupScroll.scrollTo(0, 0) }
     }
 
     private fun revealTransferCode() {
+        setupScroll.visibility = View.GONE
         qrContainer.visibility = View.VISIBLE
         bottomHint.visibility = View.VISIBLE
         hideKeyboard()
-        senderScroll.post {
-            senderScroll.smoothScrollTo(0, qrContainer.top)
-        }
     }
 
     private fun hideKeyboard() {
