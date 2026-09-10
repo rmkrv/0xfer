@@ -12,6 +12,8 @@ the [HCC2D CLI C encoder](https://github.com/marco-querini/hcc2d-cli-c-encoder),
 and [zxing-cpp](https://github.com/zxing-cpp/zxing-cpp). Thank you to their
 maintainers and contributors.
 
+[Download the current debug APK](https://github.com/rmkrv/0xfer/raw/main/0xfer-debug.apk)
+
 ## Features
 
 - Transfers files or text as an endless, fountain-coded QR stream.
@@ -111,6 +113,7 @@ reliable transfers.
 
 ### Camera and diagnostics
 
+- The reported 80+ ms performance measurement was made on a Huawei P30 Pro.
 - Both receiver paths request the fastest advertised camera FPS range and
   continuous-picture autofocus when the device supports them. This keeps a
   flat sender screen at its focal plane; no CameraX setting can make every
